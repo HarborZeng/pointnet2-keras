@@ -82,6 +82,7 @@ class MetaCheckpoint(ModelCheckpoint):
 
         self.filepath = filepath
         self.meta = meta or {'epochs': [], self.monitor: []}
+        self.new_file_override = True
 
         if training_args:
             self.meta['training_args'] = training_args
@@ -96,6 +97,13 @@ class MetaCheckpoint(ModelCheckpoint):
         super(MetaCheckpoint, self).on_train_begin(logs)
 
     def on_epoch_end(self, epoch, logs={}):
+        if self.save_best_only:
+            current = logs.get(self.monitor)
+            if self.monitor_op(current, self.best):
+                self.new_file_override = True
+            else:
+                self.new_file_override = False
+
         super(MetaCheckpoint, self).on_epoch_end(epoch, logs)
 
         # Get statistics
@@ -107,7 +115,7 @@ class MetaCheckpoint(ModelCheckpoint):
         # Save to file
         filepath = self.filepath.format(epoch=epoch, **logs)
 
-        if logs.get(self.monitor) == self.best and self.epochs_since_last_save == 0:
+        if self.new_file_override and self.epochs_since_last_save == 0:
             with h5py.File(filepath, 'r+') as f:
                 meta_group = f.create_group('meta')
                 meta_group.attrs['training_args'] = yaml.dump(

@@ -12,7 +12,7 @@ from keras.utils import np_utils
 
 class DataGenerator:
     def __init__(self, file_name, batch_size, nb_classes=40, train=True):
-        self.fie_name = file_name
+        self.file_name = file_name
         self.batch_size = batch_size
         self.nb_classes = nb_classes
         self.train = train
@@ -50,7 +50,7 @@ class DataGenerator:
         return jittered_data
 
     def generator(self):
-        f = h5py.File(self.fie_name, mode='r')
+        f = h5py.File(self.file_name, mode='r')
         nb_sample = f['data'].shape[0]
         while True:
             index = [n for n in range(nb_sample)]

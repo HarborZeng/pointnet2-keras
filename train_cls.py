@@ -1,7 +1,7 @@
 import h5py
 
 from data_loader import DataGenerator
-from model_cls import PointNet
+from model_cls import pointnet2
 from callbacks import MetaCheckpoint
 from keras.optimizers import Adam
 from schedules import onetenth_50_75
@@ -53,6 +53,12 @@ def main():
     nb_classes = 40
     train_file = './ModelNet40/ply_data_train.h5'
     test_file = './ModelNet40/ply_data_test.h5'
+    # train_num_points = 9840
+    # test_num_points = 2468
+
+    # below variables are for dev propose
+    train_num_points = 1648
+    test_num_points = 420
 
     epochs = 100
     batch_size = 32
@@ -60,7 +66,7 @@ def main():
     train = DataGenerator(train_file, batch_size, nb_classes, train=True)
     val = DataGenerator(test_file, batch_size, nb_classes, train=False)
 
-    model = PointNet(nb_classes)
+    model = pointnet2(nb_classes)
     model.summary()
 
     lr = 0.0001
@@ -79,10 +85,10 @@ def main():
                                 verbose=1, meta=last_meta)
 
     history = model.fit_generator(train.generator(),
-                                  steps_per_epoch=9840 // batch_size,
+                                  steps_per_epoch=train_num_points // batch_size,
                                   epochs=epochs,
                                   validation_data=val.generator(),
-                                  validation_steps=2468 // batch_size,
+                                  validation_steps=test_num_points // batch_size,
                                   callbacks=[checkpoint, onetenth_50_75(lr)],
                                   verbose=1,
                                   initial_epoch=last_epoch + 1)
