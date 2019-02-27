@@ -3,6 +3,9 @@ from keras.models import Model
 from keras.engine.topology import Layer
 import numpy as np
 import tensorflow as tf
+from tf_ops.grouping.tf_grouping import query_ball_point, group_point, knn_point
+from tf_ops.sampling.tf_sampling import farthest_point_sample, gather_point
+from tf_ops.tf_interpolation.tf_interpolate import three_nn, three_interpolate
 
 
 class MatMul(Layer):
@@ -72,16 +75,16 @@ def pointnet2(nb_classes):
 
 
 def set_abstraction_msg(xyz, points, npoint, radius_list, nsample_list, mlp_list):
-    new_xyz = index_points(xyz, farthest_point_sample(xyz, npoint))
+    new_xyz = gather_point(xyz, farthest_point_sample(npoint, xyz))
     new_points_list = []
     for i in range(len(radius_list)):
         radius = radius_list[i]
         nsample = nsample_list[i]
         group_idx = query_ball_point(radius, nsample, xyz, new_xyz)
-        grouped_xyz = index_points(xyz, group_idx)
+        grouped_xyz = group_point(xyz, group_idx)
         grouped_xyz -= tf.tile(tf.expand_dims(new_xyz, 2), [1, 1, nsample, 1])
         if points is not None:
-            grouped_points = index_points(points, group_idx)
+            grouped_points = group_point(points, group_idx)
             grouped_points = tf.concat([grouped_points, grouped_xyz], axis=-1)
         else:
             grouped_points = grouped_xyz
@@ -114,130 +117,67 @@ def set_abstraction(xyz, points, mlp):
     return new_xyz, new_points
 
 
-def square_distance(src, dst):
+def sample_and_group(npoint, radius, nsample, xyz, points, knn=False, use_xyz=True):
     """
     Input:
-        src: source points, [B, N, C]
-        dst: target points, [B, M, C]
+        npoint: int32
+        radius: float32
+        nsample: int32
+        xyz: (batch_size, ndataset, 3) TF tensor
+        points: (batch_size, ndataset, channel) TF tensor, if None will just use xyz as points
+        knn: bool, if True use kNN instead of radius search
+        use_xyz: bool, if True concat XYZ with local point features, otherwise just use point features
     Output:
-        dist: per-point square distance, [B, N, M]
+        new_xyz: (batch_size, npoint, 3) TF tensor
+        new_points: (batch_size, npoint, nsample, 3+channel) TF tensor
+        idx: (batch_size, npoint, nsample) TF tensor, indices of local points as in ndataset points
+        grouped_xyz: (batch_size, npoint, nsample, 3) TF tensor, normalized point XYZs
+            (subtracted by seed point XYZ) in local regions
     """
-    B, N, _ = src.shape
-    _, M, _ = dst.shape
-    dist = -2 * np.matmul(src, dst.permute(0, 2, 1))
-    dist += np.sum(src ** 2, -1).view(B, N, 1)
-    dist += np.sum(dst ** 2, -1).view(B, 1, M)
-    return dist
 
-
-def index_points(points, idx):
-    """
-    Input:
-        points: input points data, [B, N, C]
-        idx: sample index data, [B, D1, D2, ..., Dn]
-    Return:
-        new_points:, indexed points data, [B, D1, D2, ..., Dn, C]
-    """
-    device = points.device
-    B = points.shape[0]
-    view_shape = list(idx.shape)
-    view_shape[1:] = [1] * (len(view_shape) - 1)
-    repeat_shape = list(idx.shape)
-    repeat_shape[0] = 1
-    batch_indices = np.arange(B, dtype=np.long).to(device).view(view_shape).repeat(repeat_shape)
-    new_points = points[batch_indices, idx, :]
-    return new_points
-
-
-def farthest_point_sample(xyz, npoint):
-    """
-    Input:
-        xyz: pointcloud data, [B, N, C]
-        npoint: number of samples
-    Return:
-        centroids: sampled pointcloud data, [B, npoint, C]
-    """
-    B, N, C = xyz.shape
-    S = npoint
-    centroids = np.zeros((B, S), dtype=np.long)
-    distance = np.ones((B, N), dtype=np.long) * 1e10
-    farthest = np.random.randint(0, N, (B,), dtype=np.long)
-    batch_indices = np.arange(B, dtype=np.long)
-    for i in range(S):
-        centroids[:, i] = farthest
-        centroid = xyz[batch_indices, farthest, :].view(B, 1, 3)
-        dist = np.sum((xyz - centroid) ** 2, -1)
-        mask = dist < distance
-        distance[mask] = dist[mask]
-        farthest = np.max(distance, -1)[1]
-    return centroids
-
-
-def query_ball_point(radius, nsample, xyz, new_xyz):
-    """
-    Input:
-        radius: local region radius
-        nsample: max sample number in local region
-        xyz: all points, [B, N, C]
-        new_xyz: query points, [B, S, C]
-    Return:
-        group_idx: grouped points index, [B, S, nsample]
-    """
-    B, N, C = xyz.shape
-    _, S, _ = new_xyz.shape
-    K = nsample
-    group_idx = np.arange(N, dtype=np.long).view(1, 1, N).repeat([B, S, 1])
-    sqrdists = square_distance(new_xyz, xyz)
-    group_idx[sqrdists > radius ** 2] = N
-    group_idx = group_idx.sort(dim=-1)[0][:, :, :K]
-    group_first = group_idx[:, :, 0].view(B, S, 1).repeat([1, 1, K])
-    mask = group_idx == N
-    group_idx[mask] = group_first[mask]
-    return group_idx
-
-
-def sample_and_group(npoint, radius, nsample, xyz, points):
-    """
-    Input:
-        npoint:
-        radius:
-        nsample:
-        xyz: input points position data, [B, N, C]
-        points: input points data, [B, N, D]
-    Return:
-        new_xyz: sampled points position data, [B, 1, C]
-        new_points: sampled points data, [B, 1, N, C+D]
-    """
-    B, N, C = xyz.shape
-    S = npoint
-
-    new_xyz = index_points(xyz, farthest_point_sample(xyz, npoint))
-    idx = query_ball_point(radius, nsample, xyz, new_xyz)
-    grouped_xyz = index_points(xyz, idx)
-    grouped_xyz -= new_xyz.view(B, S, 1, C)
+    new_xyz = gather_point(xyz, farthest_point_sample(npoint, xyz))  # (batch_size, npoint, 3)
+    if knn:
+        _, idx = knn_point(nsample, xyz, new_xyz)
+    else:
+        idx, pts_cnt = query_ball_point(radius, nsample, xyz, new_xyz)
+    grouped_xyz = group_point(xyz, idx)  # (batch_size, npoint, nsample, 3)
+    grouped_xyz -= tf.tile(tf.expand_dims(new_xyz, 2), [1, 1, nsample, 1])  # translation normalization
     if points is not None:
-        grouped_points = index_points(points, idx)
-        new_points = tf.concat([grouped_xyz, grouped_points], dim=-1)
+        grouped_points = group_point(points, idx)  # (batch_size, npoint, nsample, channel)
+        if use_xyz:
+            new_points = tf.concat([grouped_xyz, grouped_points], axis=-1)  # (batch_size, npoint, nample, 3+channel)
+        else:
+            new_points = grouped_points
     else:
         new_points = grouped_xyz
-    return new_xyz, new_points
+
+    return new_xyz, new_points, idx, grouped_xyz
 
 
-def sample_and_group_all(xyz, points):
+def sample_and_group_all(xyz, points, use_xyz=True):
     """
-    Input:
-        xyz: input points position data, [B, N, C]
-        points: input points data, [B, N, D]
-    Return:
-        new_xyz: sampled points position data, [B, 1, C]
-        new_points: sampled points data, [B, 1, N, C+D]
+    Inputs:
+        xyz: (batch_size, ndataset, 3) TF tensor
+        points: (batch_size, ndataset, channel) TF tensor, if None will just use xyz as points
+        use_xyz: bool, if True concat XYZ with local point features, otherwise just use point features
+    Outputs:
+        new_xyz: (batch_size, 1, 3) as (0,0,0)
+        new_points: (batch_size, 1, ndataset, 3+channel) TF tensor
+    Note:
+        Equivalent to sample_and_group with npoint=1, radius=inf, use (0,0,0) as the centroid
     """
-    device = xyz.device
-    B, N, C = xyz.shape
-    new_xyz = np.zeros(B, 1, C).to(device)
-    grouped_xyz = xyz.view(B, 1, N, C)
+    batch_size = xyz.get_shape()[0].value
+    nsample = xyz.get_shape()[1].value
+    new_xyz = tf.constant(np.tile(np.array([0, 0, 0]).reshape((1, 1, 3)), (batch_size, 1, 1)),
+                          dtype=tf.float32)  # (batch_size, 1, 3)
+    idx = tf.constant(np.tile(np.array(range(nsample)).reshape((1, 1, nsample)), (batch_size, 1, 1)))
+    grouped_xyz = tf.reshape(xyz, (batch_size, 1, nsample, 3))  # (batch_size, npoint=1, nsample, 3)
     if points is not None:
-        new_points = tf.concat([grouped_xyz, points.view(B, 1, N, -1)], dim=-1)
+        if use_xyz:
+            new_points = tf.concat([xyz, points], axis=2)  # (batch_size, 16, 259)
+        else:
+            new_points = points
+        new_points = tf.expand_dims(new_points, 1)  # (batch_size, 1, 16, 259)
     else:
         new_points = grouped_xyz
-    return new_xyz, new_points
+    return new_xyz, new_points, idx, grouped_xyz
