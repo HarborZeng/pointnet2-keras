@@ -87,7 +87,7 @@ def set_abstraction_msg(xyz, points, npoint, radius_list, nsample_list, mlp_list
             grouped_points = grouped_xyz
         grouped_points = tf.transpose(grouped_points, [0, 3, 1, 2])
         for j, num_out_channel in enumerate(mlp_list[i]):
-            grouped_points = Conv2D(activation="relu")(grouped_points)
+            grouped_points = Conv2D(num_out_channel, 1, activation="relu")(grouped_points)
             grouped_points = BatchNormalization()(grouped_points)
         grouped_points = tf.transpose(grouped_points, [0, 2, 3, 1])
         new_points = tf.reduce_max(grouped_points, axis=[2])
@@ -103,7 +103,7 @@ def set_abstraction(xyz, points, mlp):
     # Point Feature Embedding
     new_points = tf.transpose(new_points, [0, 3, 1, 2])
     for i, num_out_channel in enumerate(mlp):
-        new_points = Conv2D(activation="relu")(new_points)
+        new_points = Conv2D(num_out_channel, 1, activation="relu")(new_points)
         new_points = BatchNormalization()(new_points)
     new_points = tf.transpose(new_points, [0, 2, 3, 1])
 
@@ -183,11 +183,10 @@ def query_ball_point(radius, nsample, xyz, new_xyz):
     Return:
         group_idx: grouped points index, [B, S, nsample]
     """
-    device = xyz.device
     B, N, C = xyz.shape
     _, S, _ = new_xyz.shape
     K = nsample
-    group_idx = np.arange(N, dtype=np.long).to(device).view(1, 1, N).repeat([B, S, 1])
+    group_idx = np.arange(N, dtype=np.long).view(1, 1, N).repeat([B, S, 1])
     sqrdists = square_distance(new_xyz, xyz)
     group_idx[sqrdists > radius ** 2] = N
     group_idx = group_idx.sort(dim=-1)[0][:, :, :K]
