@@ -1,11 +1,10 @@
-from keras.layers import Conv2D, Flatten, Dropout, Input, BatchNormalization, Dense
+from keras.layers import Conv2D, Flatten, Dropout, Input, BatchNormalization, Dense, InputLayer
 from keras.models import Model
 from keras.engine.topology import Layer
 import numpy as np
 import tensorflow as tf
 from tf_ops.grouping.tf_grouping import query_ball_point, group_point, knn_point
 from tf_ops.sampling.tf_sampling import farthest_point_sample, gather_point
-from tf_ops.tf_interpolation.tf_interpolate import three_nn, three_interpolate
 
 
 class MatMul(Layer):
@@ -39,7 +38,7 @@ class MatMul(Layer):
 
 
 def pointnet2(nb_classes):
-    input_points = Input(shape=(2048, 3))
+    input_points = tf.placeholder(tf.float32, shape=(32, 2048, 3))
 
     sa1_xyz, sa1_points = set_abstraction_msg(input_points,
                                               None,
@@ -69,9 +68,10 @@ def pointnet2(nb_classes):
     c = Dense(nb_classes, activation='softmax')(c)
     prediction = Flatten()(c)
 
-    model = Model(inputs=input_points, outputs=prediction)
+    model = Model(inputs=Input(shape=(2048, 3)), outputs=prediction)
 
-    return model
+    # turn tf tensor to keras
+    return model(input_points)
 
 
 def set_abstraction_msg(xyz, points, npoint, radius_list, nsample_list, mlp_list):

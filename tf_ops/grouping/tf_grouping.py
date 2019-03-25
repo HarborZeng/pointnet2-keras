@@ -1,7 +1,7 @@
 import tensorflow as tf
 from tensorflow.python.framework import ops
 
-grouping_module = tf.load_op_library('tf_grouping_so.so')
+grouping_module = tf.load_op_library('./tf_ops/grouping/tf_grouping_so.so')
 
 
 def query_ball_point(radius, nsample, xyz1, xyz2):
