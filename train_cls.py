@@ -1,8 +1,10 @@
+import os
+# os.environ["CUDA_VISIBLE_DEVICES"]="-1"
 import h5py
 from data_loader import DataGenerator
 from model_cls import pointnet2
 from callbacks import MetaCheckpoint
-from tensorflow.keras.optimizers import Adam
+from keras.optimizers import Adam
 from schedules import onetenth_50_75
 import os
 import matplotlib

@@ -1,9 +1,12 @@
-from tensorflow.keras.layers import Conv2D, Flatten, Dropout, Input, BatchNormalization, Dense, InputLayer
-from tensorflow.keras.models import Model, Sequential
-from tensorflow.keras import backend as K
+from keras.layers import Conv2D, Flatten, Dropout, Input, BatchNormalization, Dense, InputLayer
+from keras.models import Model, Sequential
+from keras import backend as K
+from keras.engine.topology import Layer
 import numpy as np
 import tensorflow as tf
-K.set_session(tf.Session())
+
+sess = tf.Session()
+K.set_session(sess)
 
 from tf_ops.grouping.tf_grouping import query_ball_point, group_point, knn_point
 from tf_ops.sampling.tf_sampling import farthest_point_sample, gather_point
@@ -40,11 +43,20 @@ def pointnet2(nb_classes):
     c = Dropout(0.5)(c)
     c = Dense(nb_classes, activation='softmax')(c)
     prediction = Flatten()(c)
-
-    model = Model(inputs=model_input, outputs=prediction)
+    output_keras = TfToKerasLayer()(prediction)
+    model = Model(inputs=model_input, outputs=output_keras)
 
     # turn tf tensor to keras
     return model
+
+
+class TfToKerasLayer(Layer):
+    def __init__(self, **kwargs):
+        super(TfToKerasLayer, self).__init__(**kwargs)
+
+    def build(self, input_shape):
+        # 为该层创建一个可训练的权重
+        super(TfToKerasLayer, self).build(input_shape)  # 一定要在最后调用它
 
 
 def set_abstraction_msg(xyz, points, npoint, radius_list, nsample_list, mlp_list):
