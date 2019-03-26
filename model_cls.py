@@ -11,8 +11,9 @@ from tf_ops.sampling.tf_sampling import farthest_point_sample, gather_point
 
 def pointnet2(nb_classes):
     input_points = tf.placeholder(tf.float32, shape=(16, 1024, 3))
+    model_input = Input(tensor=input_points)
 
-    sa1_xyz, sa1_points = set_abstraction_msg(input_points,
+    sa1_xyz, sa1_points = set_abstraction_msg(model_input,
                                               None,
                                               512,
                                               [0.1, 0.2, 0.4],
@@ -39,8 +40,6 @@ def pointnet2(nb_classes):
     c = Dropout(0.5)(c)
     c = Dense(nb_classes, activation='softmax')(c)
     prediction = Flatten()(c)
-
-    model_input = Input(tensor=input_points)
 
     model = Model(inputs=model_input, outputs=prediction)
 
