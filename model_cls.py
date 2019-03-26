@@ -1,44 +1,16 @@
-from keras.layers import Conv2D, Flatten, Dropout, Input, BatchNormalization, Dense, InputLayer
-from keras.models import Model
-from keras.engine.topology import Layer
+from tensorflow.keras.layers import Conv2D, Flatten, Dropout, Input, BatchNormalization, Dense, InputLayer
+from tensorflow.keras.models import Model, Sequential
+from tensorflow.keras import backend as K
 import numpy as np
 import tensorflow as tf
+K.set_session(tf.Session())
+
 from tf_ops.grouping.tf_grouping import query_ball_point, group_point, knn_point
 from tf_ops.sampling.tf_sampling import farthest_point_sample, gather_point
 
 
-class MatMul(Layer):
-
-    def __init__(self, **kwargs):
-        super(MatMul, self).__init__(**kwargs)
-
-    def build(self, input_shape):
-        # Used purely for shape validation.
-        if not isinstance(input_shape, list):
-            raise ValueError('`MatMul` layer should be called '
-                             'on a list of inputs')
-        if len(input_shape) != 2:
-            raise ValueError('The input of `MatMul` layer should be a list containing 2 elements')
-
-        if len(input_shape[0]) != 3 or len(input_shape[1]) != 3:
-            raise ValueError('The dimensions of each element of inputs should be 3')
-
-        if input_shape[0][-1] != input_shape[1][1]:
-            raise ValueError('The last dimension of inputs[0] should match the dimension 1 of inputs[1]')
-
-    def call(self, inputs):
-        if not isinstance(inputs, list):
-            raise ValueError('A `MatMul` layer should be called '
-                             'on a list of inputs.')
-        return tf.matmul(inputs[0], inputs[1])
-
-    def compute_output_shape(self, input_shape):
-        output_shape = [input_shape[0][0], input_shape[0][1], input_shape[1][-1]]
-        return tuple(output_shape)
-
-
 def pointnet2(nb_classes):
-    input_points = tf.placeholder(tf.float32, shape=(32, 2048, 3))
+    input_points = tf.placeholder(tf.float32, shape=(16, 1024, 3))
 
     sa1_xyz, sa1_points = set_abstraction_msg(input_points,
                                               None,
@@ -68,10 +40,12 @@ def pointnet2(nb_classes):
     c = Dense(nb_classes, activation='softmax')(c)
     prediction = Flatten()(c)
 
-    model = Model(inputs=Input(shape=(2048, 3)), outputs=prediction)
+    model_input = Input(tensor=input_points)
+
+    model = Model(inputs=model_input, outputs=prediction)
 
     # turn tf tensor to keras
-    return model(input_points)
+    return model
 
 
 def set_abstraction_msg(xyz, points, npoint, radius_list, nsample_list, mlp_list):
@@ -81,10 +55,10 @@ def set_abstraction_msg(xyz, points, npoint, radius_list, nsample_list, mlp_list
         radius = radius_list[i]
         nsample = nsample_list[i]
         group_idx = query_ball_point(radius, nsample, xyz, new_xyz)
-        grouped_xyz = group_point(xyz, group_idx)
+        grouped_xyz = group_point(xyz, group_idx[0])
         grouped_xyz -= tf.tile(tf.expand_dims(new_xyz, 2), [1, 1, nsample, 1])
         if points is not None:
-            grouped_points = group_point(points, group_idx)
+            grouped_points = group_point(points, group_idx[0])
             grouped_points = tf.concat([grouped_points, grouped_xyz], axis=-1)
         else:
             grouped_points = grouped_xyz
@@ -111,7 +85,7 @@ def set_abstraction(xyz, points, mlp):
     new_points = tf.transpose(new_points, [0, 2, 3, 1])
 
     # Pooling in Local Regions
-    new_points = tf.reduce_max(new_points, axis=[2], keep_dims=True, name='maxpool')
+    new_points = tf.reduce_max(new_points, axis=[2], keepdims=True, name='maxpool')
 
     new_points = tf.squeeze(new_points, [2])  # (batch_size, npoints, mlp2[-1])
     return new_xyz, new_points
