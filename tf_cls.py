@@ -1,10 +1,9 @@
+import tensorflow as tf
 from model_cls import pointnet2
 import matplotlib
-
 matplotlib.use('AGG')
 import matplotlib.pyplot as plt
 from data_loader import DataGenerator
-import tensorflow as tf
 import os
 from keras import backend as K
 
@@ -63,9 +62,9 @@ def train():
     validate_dg = DataGenerator(test_file, batch_size, nb_classes, train=False)
     point_cloud = tf.placeholder(tf.float32, shape=(batch_size, 1024, 3))
     pred = pointnet2(point_cloud, nb_classes)
-    labels = tf.placeholder(tf.int32, shape=nb_classes)
-    from keras.objectives import sparse_categorical_crossentropy
-    loss = tf.reduce_mean(sparse_categorical_crossentropy(labels, pred))
+    labels = tf.placeholder(tf.float32, shape=(nb_classes))
+    from keras.objectives import categorical_crossentropy
+    loss = tf.reduce_mean(categorical_crossentropy(labels, pred))
     train_op = tf.train.AdamOptimizer(get_learning_rate()).minimize(loss)
     init_op = tf.global_variables_initializer()
     session = K.get_session()
@@ -73,12 +72,14 @@ def train():
 
     with session.as_default():
         with tf.device('/gpu:0'):
-            dataset_train = tf.data.Dataset.from_generator(train_dg.generator(), output_types=(tf.float32, tf.int32))
-            dataset_validate = tf.data.Dataset.from_generator(validate_dg.generator(), output_types=(tf.float32, tf.int32))
+            dataset_train = tf.data.Dataset.from_generator(train_dg.generator(), output_types=(tf.float32, tf.float32))
+            dataset_train = dataset_train.repeat(epochs).batch(batch_size)
+            x, y = dataset_train.make_one_shot_iterator().get_next()
+            dataset_validate = tf.data.Dataset.from_generator(validate_dg.generator, output_types=(tf.float32, tf.float32))
             for i in range(epochs):
                 train_op.run(feed_dict={
-                    validate_dg: dataset_train,
-                    labels: dataset_validate
+                    point_cloud: x,
+                    labels: y
                 })
 
 
