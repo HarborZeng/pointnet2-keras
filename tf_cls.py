@@ -1,11 +1,14 @@
 import tensorflow as tf
 from model_cls import pointnet2
 import matplotlib
+
 matplotlib.use('AGG')
 import matplotlib.pyplot as plt
 from data_loader import DataGenerator
 import os
 from keras import backend as K
+from modelnet_h5_dataset import ModelNetH5Dataset
+import numpy as np
 
 
 def plot_history(history, result_dir):
@@ -57,10 +60,16 @@ def train():
 
     epochs = 100
     batch_size = 32
+    num_point = 1024
+
+    TRAIN_DATASET = ModelNetH5Dataset('./data/modelnet40_ply_hdf5_2048/train_files.txt',
+                                      batch_size=batch_size, npoints=num_point, shuffle=True)
+    TEST_DATASET = ModelNetH5Dataset('data/modelnet40_ply_hdf5_2048/test_files.txt',
+                                     batch_size=batch_size, npoints=num_point, shuffle=False)
 
     train_dg = DataGenerator(train_file, batch_size, nb_classes, train=True)
     validate_dg = DataGenerator(test_file, batch_size, nb_classes, train=False)
-    point_cloud = tf.placeholder(tf.float32, shape=(batch_size, 1024, 3))
+    point_cloud = tf.placeholder(tf.float32, shape=(batch_size, num_point, 3))
     pred = pointnet2(point_cloud, nb_classes)
     labels = tf.placeholder(tf.float32, shape=(nb_classes))
     from keras.objectives import categorical_crossentropy
@@ -72,15 +81,19 @@ def train():
 
     with session.as_default():
         with tf.device('/gpu:0'):
-            dataset_train = tf.data.Dataset.from_generator(train_dg.generator(), output_types=(tf.float32, tf.float32))
-            dataset_train = dataset_train.repeat(epochs).batch(batch_size)
-            x, y = dataset_train.make_one_shot_iterator().get_next()
-            dataset_validate = tf.data.Dataset.from_generator(validate_dg.generator, output_types=(tf.float32, tf.float32))
             for i in range(epochs):
-                train_op.run(feed_dict={
-                    point_cloud: x,
-                    labels: y
-                })
+                # Make sure batch data is of same size
+                cur_batch_data = np.zeros((batch_size, num_point, TRAIN_DATASET.num_channel()))
+                cur_batch_label = np.zeros((batch_size), dtype=np.int32)
+                while TRAIN_DATASET.has_next_batch():
+                    batch_data, batch_label = TRAIN_DATASET.next_batch(augment=True)
+                    bsize = batch_data.shape[0]
+                    cur_batch_data[0:bsize, ...] = batch_data
+                    cur_batch_label[0:bsize] = batch_label
+                    train_op.run(feed_dict={
+                        point_cloud: cur_batch_data,
+                        labels: cur_batch_label
+                    })
 
 
 if __name__ == '__main__':
