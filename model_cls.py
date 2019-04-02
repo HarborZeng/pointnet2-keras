@@ -1,19 +1,16 @@
-from keras.layers import Conv2D, Flatten, Dropout, Input, BatchNormalization, Dense, Lambda
-from keras.models import Model
+from keras.layers import Conv2D, Dropout, Input, BatchNormalization, Dense, Lambda
 from keras import backend as K
-from keras.engine.topology import Layer
 import numpy as np
 import tensorflow as tf
 
 sess = tf.Session()
 K.set_session(sess)
 
-from tf_ops.grouping.tf_grouping import query_ball_point, group_point, knn_point
+from tf_ops.grouping.tf_grouping import query_ball_point, group_point
 from tf_ops.sampling.tf_sampling import farthest_point_sample, gather_point
 
 
-def pointnet2(nb_classes):
-    input_points = tf.placeholder(tf.float32, shape=(16, 1024, 3))
+def pointnet2(input_points, nb_classes):
     model_input = Input(tensor=input_points)
 
     sa1_xyz, sa1_points = set_abstraction_msg(model_input,
@@ -45,9 +42,7 @@ def pointnet2(nb_classes):
     c = BatchNormalization()(c)
     c = Dropout(0.5)(c)
     prediction = Dense(nb_classes, activation='softmax')(c)
-    # turn tf tensor to keras model
-    model = Model(inputs=model_input, outputs=prediction)
-    return model
+    return prediction
 
 
 def set_abstraction_msg(xyz, points, npoint, radius_list, nsample_list, mlp_list, use_nchw):

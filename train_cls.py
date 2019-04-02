@@ -6,7 +6,6 @@ from model_cls import pointnet2
 from callbacks import MetaCheckpoint
 from keras.optimizers import Adam
 from schedules import onetenth_50_75
-import os
 import matplotlib
 
 matplotlib.use('AGG')
