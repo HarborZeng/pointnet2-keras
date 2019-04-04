@@ -14,7 +14,7 @@ from tf_ops.grouping.tf_grouping import query_ball_point, group_point
 from tf_ops.sampling.tf_sampling import farthest_point_sample, gather_point
 
 
-def pointnet2(input_points, nb_classes):
+def pointnet2(input_points, nb_classes, is_training):
     model_input = Input(tensor=input_points)
 
     sa1_xyz, sa1_points = set_abstraction_msg(model_input,
@@ -23,6 +23,7 @@ def pointnet2(input_points, nb_classes):
                                               [0.1, 0.2, 0.4],
                                               [16, 32, 128],
                                               [[32, 32, 64], [64, 64, 128], [64, 96, 128]],
+                                              is_training,
                                               use_nchw=True)
 
     sa2_xyz, sa2_points = set_abstraction_msg(sa1_xyz,
@@ -31,25 +32,27 @@ def pointnet2(input_points, nb_classes):
                                               [0.2, 0.4, 0.8],
                                               [32, 64, 128],
                                               [[64, 64, 128], [128, 128, 256], [128, 128, 256]],
+                                              is_training,
                                               use_nchw=False)
 
     sa3_xyz, sa3_points = set_abstraction(sa2_xyz,
                                           sa2_points,
-                                          [256, 512, 1024])
+                                          [256, 512, 1024],
+                                          is_training)
 
     c = Lambda(lambda x: K.reshape(x, [16, -1]))(sa3_points)
     # point_net_cls
     c = Dense(512, activation='relu')(c)
-    c = BatchNormalization()(c)
-    c = Dropout(0.5)(c)
+    c = BatchNormalization()(c, training=is_training)
+    c = Dropout(0.4)(c, training=is_training)
     c = Dense(256, activation='relu')(c)
-    c = BatchNormalization()(c)
-    c = Dropout(0.5)(c)
-    prediction = Dense(nb_classes, activation='softmax')(c)
+    c = BatchNormalization()(c, training=is_training)
+    c = Dropout(0.4)(c, training=is_training)
+    prediction = Dense(nb_classes)(c)
     return prediction
 
 
-def set_abstraction_msg(xyz, points, npoint, radius_list, nsample_list, mlp_list, use_nchw):
+def set_abstraction_msg(xyz, points, npoint, radius_list, nsample_list, mlp_list, is_training, use_nchw):
     new_xyz = gather_point(xyz, farthest_point_sample(npoint, xyz))
     new_points_list = []
     for i in range(len(radius_list)):
@@ -66,7 +69,7 @@ def set_abstraction_msg(xyz, points, npoint, radius_list, nsample_list, mlp_list
         if use_nchw: grouped_points = Lambda(lambda x: K.permute_dimensions(x, [0, 3, 1, 2]))(grouped_points)
         for j, num_out_channel in enumerate(mlp_list[i]):
             grouped_points = Conv2D(num_out_channel, 1, activation="relu")(grouped_points)
-            grouped_points = BatchNormalization()(grouped_points)
+            grouped_points = BatchNormalization()(grouped_points, training=is_training)
         if use_nchw: grouped_points = Lambda(lambda x: K.permute_dimensions(x, [0, 2, 3, 1]))(grouped_points)
         new_points = Lambda(lambda x: K.max(x, axis=2))(grouped_points)
         new_points_list.append(new_points)
@@ -74,14 +77,14 @@ def set_abstraction_msg(xyz, points, npoint, radius_list, nsample_list, mlp_list
     return new_xyz, new_points_concat
 
 
-def set_abstraction(xyz, points, mlp):
+def set_abstraction(xyz, points, mlp, is_training):
     # Sample and Grouping
     new_xyz, new_points, idx, grouped_xyz = sample_and_group_all(xyz, points)
 
     # Point Feature Embedding
     for i, num_out_channel in enumerate(mlp):
         new_points = Conv2D(num_out_channel, 1, activation="relu")(new_points)
-        new_points = BatchNormalization()(new_points)
+        new_points = BatchNormalization()(new_points, training=is_training)
 
     # Pooling in Local Regions
     new_points = Lambda(lambda x: K.max(x, axis=2, keepdims=True))(new_points)

@@ -2,6 +2,8 @@ import tensorflow as tf
 from model_cls import pointnet2
 import matplotlib
 
+from pointnet2_cls_msg import placeholder_inputs, get_loss, get_model
+
 matplotlib.use('AGG')
 import matplotlib.pyplot as plt
 from data_loader import DataGenerator
@@ -15,7 +17,7 @@ nb_classes = 40
 train_file = './ModelNet40/ply_data_train.h5'
 test_file = './ModelNet40/ply_data_test.h5'
 
-epochs = 100
+epochs = 201
 batch_size = 16
 num_point = 1024
 
@@ -92,8 +94,8 @@ def train():
     TEST_DATASET = ModelNetH5Dataset('data/modelnet40_ply_hdf5_2048/test_files.txt',
                                      batch_size=batch_size, npoints=num_point, shuffle=False)
 
-    point_cloud = tf.placeholder(tf.float32, shape=(batch_size, num_point, 3))
-    labels = tf.placeholder(tf.int32, shape=(batch_size))
+    point_cloud, labels = placeholder_inputs(batch_size, num_point)
+    is_training_pl = tf.placeholder(tf.bool, shape=())
 
     # Note the global_step=batch parameter to minimize.
     # That tells the optimizer to helpfully increment the 'batch' parameter
@@ -103,7 +105,7 @@ def train():
     bn_decay = get_bn_decay(batch)
     tf.summary.scalar('bn_decay', bn_decay)
 
-    pred = pointnet2(point_cloud, nb_classes)
+    pred = pointnet2(point_cloud, nb_classes, is_training_pl)
 
     loss = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=pred, labels=labels)
     classify_loss = tf.reduce_mean(loss)
@@ -128,6 +130,8 @@ def train():
     with session.as_default():
         with tf.device('/gpu:0'):
             for i in range(epochs):
+                print('**** EPOCH %03d ****' % i)
+
                 # Make sure batch data is of same size
                 cur_batch_data = np.zeros((batch_size, num_point, TRAIN_DATASET.num_channel()))
                 cur_batch_label = np.zeros((batch_size), dtype=np.int32)
@@ -144,7 +148,8 @@ def train():
                     cur_batch_label[0:bsize] = batch_label
                     _, loss_val, pred_val = session.run([train_op, total_loss, pred], feed_dict={
                         point_cloud: cur_batch_data,
-                        labels: cur_batch_label
+                        labels: cur_batch_label,
+                        is_training_pl: True
                     })
 
                     pred_val = np.argmax(pred_val, 1)
@@ -186,7 +191,8 @@ def train():
 
                     _, loss_val, pred_val = session.run([train_op, total_loss, pred], feed_dict={
                         point_cloud: cur_batch_data,
-                        labels: cur_batch_label
+                        labels: cur_batch_label,
+                        is_training_pl: False
                     })
                     pred_val = np.argmax(pred_val, 1)
                     correct = np.sum(pred_val[0:bsize] == batch_label[0:bsize])
