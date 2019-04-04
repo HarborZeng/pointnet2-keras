@@ -3,7 +3,11 @@ from keras import backend as K
 import numpy as np
 import tensorflow as tf
 
-sess = tf.Session()
+config = tf.ConfigProto()
+config.gpu_options.allow_growth = True
+config.allow_soft_placement = True
+config.log_device_placement = False
+sess = tf.Session(config=config)
 K.set_session(sess)
 
 from tf_ops.grouping.tf_grouping import query_ball_point, group_point
