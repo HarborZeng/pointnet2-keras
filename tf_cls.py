@@ -25,41 +25,47 @@ bn_decay_clip = 0.99
 decay_rate = 0.7
 
 summary_dir = 'summary'
+image_dir = 'result_image'
+train_log_dir = 'train_out'
 
 
-def plot_history(history, result_dir):
-    plt.plot(history.history['acc'], marker='.')
-    plt.plot(history.history['val_acc'], marker='.')
+def plot_history(history, result_dir, show_on_train=True):
+    plt.plot(history['acc'], marker='.')
+    plt.plot(history['val_acc'], marker='.')
     plt.title('model accuracy')
     plt.xlabel('epoch')
     plt.ylabel('accuracy')
     plt.grid()
     plt.legend(['acc', 'val_acc'], loc='lower right')
     plt.savefig(os.path.join(result_dir, 'model_accuracy.png'))
+    if show_on_train:
+        plt.show()
     plt.close()
 
-    plt.plot(history.history['loss'], marker='.')
-    plt.plot(history.history['val_loss'], marker='.')
+    plt.plot(history['loss'], marker='.')
+    plt.plot(history['val_loss'], marker='.')
     plt.title('model loss')
     plt.xlabel('epoch')
     plt.ylabel('loss')
     plt.grid()
     plt.legend(['loss', 'val_loss'], loc='upper right')
     plt.savefig(os.path.join(result_dir, 'model_loss.png'))
+    if show_on_train:
+        plt.show()
     plt.close()
 
 
 def save_history(history, result_dir):
-    loss = history.history['loss']
-    acc = history.history['acc']
-    val_loss = history.history['val_loss']
-    val_acc = history.history['val_acc']
+    loss = history['loss']
+    acc = history['acc']
+    val_loss = history['val_loss']
+    val_acc = history['val_acc']
     nb_epoch = len(acc)
 
     with open(os.path.join(result_dir, 'result.txt'), 'w') as fp:
         fp.write('epoch\tloss\tacc\tval_loss\tval_acc\n')
         for i in range(nb_epoch):
-            fp.write('{}\t{}\t{}\t{}\t{}\n'.format(
+            fp.write('{}\t{:.2f}\t{:.2%}\t{:.2f}\t{:.2%}\n'.format(
                 i, loss[i], acc[i], val_loss[i], val_acc[i]))
         fp.close()
 
@@ -135,9 +141,18 @@ def train():
 
     with session.as_default():
         with tf.device('/gpu:0'):
+
+            history = {
+                "acc": [],
+                "val_acc": [],
+                "loss": [],
+                "val_loss": []
+            }
+
+
             for epoch in range(epochs):
                 # TODO: add early stop to prevent overfitting
-                print('**** EPOCH %03d ****' % epoch)
+                print('**** EPOCH {} ****'.format(epoch))
 
                 # Make sure batch data is of same size
                 cur_batch_data = np.zeros((batch_size, num_point, train_dataset.num_channel()))
@@ -167,9 +182,17 @@ def train():
                     total_seen += bsize
                     loss_sum += loss_val
                     if (batch_idx + 1) % 50 == 0:
-                        print(' ---- batch: %03d ----' % (batch_idx + 1))
-                        print('mean loss: %f' % (loss_sum / 50))
-                        print('accuracy: %f' % (total_correct / float(total_seen)))
+                        print(' ---- batch: {} ----'.format(batch_idx + 1))
+                        train_loss = loss_sum / 50
+                        print('mean loss: {:.2f}'.format(train_loss))
+                        train_acc = total_correct / float(total_seen)
+                        print('accuracy: {:.2%}'.format(train_acc))
+
+                        if train_dataset.has_next_batch() is False:
+                            # only save these parameter on every epoch
+                            history['acc'].append(train_acc)
+                            history['loss'].append(train_loss)
+
                         total_correct = 0
                         total_seen = 0
                         loss_sum = 0
@@ -188,7 +211,7 @@ def train():
                 total_seen_class = [0 for _ in range(nb_classes)]
                 total_correct_class = [0 for _ in range(nb_classes)]
 
-                print('---- EPOCH %03d EVALUATION ----' % epoch)
+                print('---- EPOCH {} EVALUATION ----'.format(epoch))
 
                 while test_dataset.has_next_batch():
                     batch_data, batch_label = test_dataset.next_batch(augment=False)
@@ -216,16 +239,26 @@ def train():
                         total_seen_class[the_lable] += 1
                         total_correct_class[the_lable] += (pred_val[bindex] == the_lable)
 
-                print('eval mean loss: %f' % (loss_sum / float(batch_idx)))
-                print('eval accuracy: %f' % (total_correct / float(total_seen)))
-                print('eval avg class acc: %f' % (
+                val_loss = loss_sum / float(batch_idx)
+                print('eval mean loss: {:.2f}'.format(val_loss))
+                val_acc = total_correct / float(total_seen)
+                print('eval accuracy: {:.2%}'.format(val_acc))
+                print('eval avg class acc: {:.2%}'.format(
                     np.mean(np.array(total_correct_class) / np.array(total_seen_class, dtype=np.float))))
+
+                if test_dataset.has_next_batch() is False:
+                    # only save these parameter on every epoch
+                    history['val_acc'].append(val_acc)
+                    history['val_loss'].append(val_loss)
 
                 test_dataset.reset()
 
                 if epoch % 10 == 0:
                     save_path = saver.save(session, os.path.join(summary_dir, "model.ckpt"))
                     print("Model saved in file: {}".format(save_path))
+
+            plot_history(history, image_dir)
+            save_history(history, train_log_dir)
 
 
 if __name__ == '__main__':
