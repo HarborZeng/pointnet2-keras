@@ -184,9 +184,9 @@ def train():
                     if (batch_idx + 1) % 50 == 0:
                         print(' ---- batch: {} ----'.format(batch_idx + 1))
                         train_loss = loss_sum / 50
-                        print('mean loss: {:.2f}'.format(train_loss))
+                        print('mean loss:\t{:.2f}'.format(train_loss))
                         train_acc = total_correct / float(total_seen)
-                        print('accuracy: {:.2%}'.format(train_acc))
+                        print('accuracy:\t{:.2%}'.format(train_acc))
 
                         if train_dataset.has_next_batch() is False:
                             # only save these parameter on every epoch
@@ -240,10 +240,10 @@ def train():
                         total_correct_class[the_lable] += (pred_val[bindex] == the_lable)
 
                 val_loss = loss_sum / float(batch_idx)
-                print('eval mean loss: {:.2f}'.format(val_loss))
+                print('eval mean loss:\t{:.2f}'.format(val_loss))
                 val_acc = total_correct / float(total_seen)
-                print('eval accuracy: {:.2%}'.format(val_acc))
-                print('eval avg class acc: {:.2%}'.format(
+                print('eval accuracy:\t{:.2%}'.format(val_acc))
+                print('eval avg class acc:\t{:.2%}'.format(
                     np.mean(np.array(total_correct_class) / np.array(total_seen_class, dtype=np.float))))
 
                 if test_dataset.has_next_batch() is False:
