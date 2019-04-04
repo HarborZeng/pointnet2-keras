@@ -17,7 +17,7 @@ nb_classes = 40
 train_file = './ModelNet40/ply_data_train.h5'
 test_file = './ModelNet40/ply_data_test.h5'
 
-epochs = 201
+epochs = 150
 batch_size = 16
 num_point = 1024
 
@@ -80,7 +80,7 @@ def get_learning_rate(batch):
 
 def get_bn_decay(batch):
     bn_momentum = tf.train.exponential_decay(BN_INIT_DECAY,
-                                             batch * batch,
+                                             batch * batch_size,
                                              BN_DECAY_DECAY_STEP,
                                              BN_DECAY_DECAY_RATE,
                                              staircase=True)
@@ -130,6 +130,7 @@ def train():
     with session.as_default():
         with tf.device('/gpu:0'):
             for i in range(epochs):
+                # TODO: add early stop to prevent overfitting
                 print('**** EPOCH %03d ****' % i)
 
                 # Make sure batch data is of same size
@@ -149,7 +150,8 @@ def train():
                     _, loss_val, pred_val = session.run([train_op, total_loss, pred], feed_dict={
                         point_cloud: cur_batch_data,
                         labels: cur_batch_label,
-                        is_training_pl: True
+                        is_training_pl: True,
+                        batch: i
                     })
 
                     pred_val = np.argmax(pred_val, 1)
@@ -167,8 +169,6 @@ def train():
                     batch_idx += 1
                 TRAIN_DATASET.reset()
 
-                global EPOCH_CNT
-
                 # Make sure batch data is of same size
                 cur_batch_data = np.zeros((batch_size, num_point, TEST_DATASET.num_channel()))
                 cur_batch_label = np.zeros((batch_size), dtype=np.int32)
@@ -180,7 +180,7 @@ def train():
                 total_seen_class = [0 for _ in range(nb_classes)]
                 total_correct_class = [0 for _ in range(nb_classes)]
 
-                print('---- EPOCH %03d EVALUATION ----' % (EPOCH_CNT))
+                print('---- EPOCH %03d EVALUATION ----' % i)
 
                 while TEST_DATASET.has_next_batch():
                     batch_data, batch_label = TEST_DATASET.next_batch(augment=False)
@@ -192,7 +192,8 @@ def train():
                     _, loss_val, pred_val = session.run([train_op, total_loss, pred], feed_dict={
                         point_cloud: cur_batch_data,
                         labels: cur_batch_label,
-                        is_training_pl: False
+                        is_training_pl: False,
+                        batch: i
                     })
                     pred_val = np.argmax(pred_val, 1)
                     correct = np.sum(pred_val[0:bsize] == batch_label[0:bsize])
@@ -209,7 +210,6 @@ def train():
                 print('eval accuracy: %f' % (total_correct / float(total_seen)))
                 print('eval avg class acc: %f' % (
                     np.mean(np.array(total_correct_class) / np.array(total_seen_class, dtype=np.float))))
-                EPOCH_CNT += 1
 
                 TEST_DATASET.reset()
 
