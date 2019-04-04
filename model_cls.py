@@ -10,6 +10,8 @@ config.log_device_placement = False
 sess = tf.Session(config=config)
 K.set_session(sess)
 
+# these cuda ops are impossible to be wrapped up using keras Lambda layer,
+# so it's impossible to successfully build a keras model instance or any kind
 from tf_ops.grouping.tf_grouping import query_ball_point, group_point
 from tf_ops.sampling.tf_sampling import farthest_point_sample, gather_point
 
@@ -48,6 +50,7 @@ def pointnet2(input_points, nb_classes, is_training):
     c = Dense(256, activation='relu')(c)
     c = BatchNormalization()(c, training=is_training)
     c = Dropout(0.4)(c, training=is_training)
+    # a fully connected layer without activation func
     prediction = Dense(nb_classes)(c)
     return prediction
 
