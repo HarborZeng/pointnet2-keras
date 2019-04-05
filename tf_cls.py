@@ -30,6 +30,10 @@ train_log_dir = 'train_out'
 
 
 def plot_history(history, result_dir, show_on_train=True):
+
+    if not os.path.exists(result_dir):
+        os.mkdir(result_dir)
+
     plt.plot(history['acc'], marker='.')
     plt.plot(history['val_acc'], marker='.')
     plt.title('model accuracy')
@@ -37,9 +41,14 @@ def plot_history(history, result_dir, show_on_train=True):
     plt.ylabel('accuracy')
     plt.grid()
     plt.legend(['acc', 'val_acc'], loc='lower right')
+
+    if os.path.exists(os.path.join(result_dir, 'model_accuracy.png')):
+        os.remove(os.path.join(result_dir, 'model_accuracy.png'))
     plt.savefig(os.path.join(result_dir, 'model_accuracy.png'))
+
     if show_on_train:
         plt.show()
+
     plt.close()
 
     plt.plot(history['loss'], marker='.')
@@ -49,9 +58,15 @@ def plot_history(history, result_dir, show_on_train=True):
     plt.ylabel('loss')
     plt.grid()
     plt.legend(['loss', 'val_loss'], loc='upper right')
+
+    if os.path.exists(os.path.join(result_dir, 'model_loss.png')):
+        os.remove(os.path.join(result_dir, 'model_loss.png'))
+
     plt.savefig(os.path.join(result_dir, 'model_loss.png'))
+
     if show_on_train:
         plt.show()
+
     plt.close()
 
 
@@ -61,6 +76,9 @@ def save_history(history, result_dir):
     val_loss = history['val_loss']
     val_acc = history['val_acc']
     nb_epoch = len(acc)
+
+    if not os.path.exists(result_dir):
+        os.mkdir(result_dir)
 
     with open(os.path.join(result_dir, 'result.txt'), 'w') as fp:
         fp.write('epoch\tloss\tacc\tval_loss\tval_acc\n')
