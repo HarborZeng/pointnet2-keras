@@ -174,6 +174,7 @@ def train():
             }
 
             for epoch in range(epochs):
+                current_epoch = epoch
                 # TODO: add early stop to prevent overfitting
                 print('**** EPOCH {} ****'.format(epoch))
 
@@ -196,7 +197,6 @@ def train():
                                                                      point_cloud: cur_batch_data,
                                                                      labels: cur_batch_label,
                                                                      is_training_pl: True,
-                                                                     current_epoch: epoch
                                                                  })
 
                     pred_val = np.argmax(pred_val, 1)
@@ -244,7 +244,6 @@ def train():
                                                                           point_cloud: cur_batch_data,
                                                                           labels: cur_batch_label,
                                                                           is_training_pl: False,
-                                                                          current_epoch: epoch
                                                                       })
 
                     test_pred_val = np.argmax(test_pred_val, 1)
@@ -280,23 +279,25 @@ def train():
             plot_history(history, image_dir)
             save_history(history, train_log_dir)
 
-            y_pred = test_pred_val
-            _, y_labels = test_dataset.next_batch()
-            y_true = np.argmax(y_labels, 1)
-            # 计算模型的 metrics
-            print("Precision", precision_score(y_true.tolist(), y_pred.tolist(), average='weighted'))
-            print("Recall", recall_score(y_true, y_pred, average='weighted'))
-            print("f1_score", f1_score(y_true, y_pred, average='weighted'))
+            conf_mat = tf.confusion_matrix(labels, pred).eval(session=session)
             print("confusion_matrix")
-            conf_mat = confusion_matrix(y_true, y_pred)
             print(conf_mat)
 
-            df_cm = pd.DataFrame(conf_mat, index=[i for i in classes],
-                                 columns=[i for i in classes])
-            plt.figure(figsize=(10, 7))
-            sn.heatmap(df_cm, annot=True, fmt="d", cmap="YlGnBu")
-            plt.title('confusion matrix')
-            plt.show()
+            plot_cm(conf_mat, image_dir)
+
+
+def plot_cm(conf_mat, image_dir):
+    df_cm = pd.DataFrame(conf_mat, index=[i for i in classes],
+                         columns=[i for i in classes])
+    plt.figure(figsize=(10, 7))
+    sn.heatmap(df_cm, annot=True, fmt="d", cmap="YlGnBu")
+    plt.title('confusion matrix')
+
+    if os.path.exists(os.path.join(image_dir, 'confusion_matrix.png')):
+        os.remove(os.path.join(image_dir, 'confusion_matrix.png'))
+    plt.savefig(os.path.join(image_dir, 'confusion_matrix.png'))
+
+    plt.show()
 
 
 if __name__ == '__main__':
