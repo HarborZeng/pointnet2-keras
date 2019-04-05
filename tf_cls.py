@@ -14,7 +14,7 @@ import pandas as pd
 
 nb_classes = 40
 
-epochs = 150
+epochs = 100
 batch_size = 16
 num_point = 1024
 
@@ -89,7 +89,7 @@ def save_history(history, result_dir):
     with open(os.path.join(result_dir, 'result.txt'), 'w') as fp:
         fp.write('epoch\tloss\tacc\tval_loss\tval_acc\n')
         for i in range(nb_epoch):
-            fp.write('{}\t{:.4f}\t{:.2%}\t{:.4f}\t{:.2%}\n'.format(
+            fp.write('{}\t{}\t{}\t{}\t{}\n'.format(
                 i, loss[i], acc[i], val_loss[i], val_acc[i]))
         fp.close()
 
@@ -184,6 +184,7 @@ def train():
                 train_total_correct = 0
                 train_total_seen = 0
                 train_loss_sum = 0
+                train_batch_idx = 0
 
                 while train_dataset.has_next_batch():
                     batch_data, batch_label = train_dataset.next_batch(augment=True)
@@ -203,8 +204,9 @@ def train():
                     train_total_correct += correct
                     train_total_seen += bsize
                     train_loss_sum += loss_val
+                    train_batch_idx += 1
 
-                train_loss = train_loss_sum / 50
+                train_loss = train_loss_sum / train_batch_idx
                 print('mean loss:\t{:.4f}'.format(train_loss))
                 train_acc = train_total_correct / train_total_seen
                 print('accuracy:\t{:.2%}'.format(train_acc))
@@ -279,7 +281,8 @@ def train():
             save_history(history, train_log_dir)
 
             y_pred = test_pred_val
-            y_true = np.argmax(cur_batch_label, 1)
+            _, y_labels = test_dataset.next_batch()
+            y_true = np.argmax(y_labels, 1)
             # 计算模型的 metrics
             print("Precision", precision_score(y_true.tolist(), y_pred.tolist(), average='weighted'))
             print("Recall", recall_score(y_true, y_pred, average='weighted'))
