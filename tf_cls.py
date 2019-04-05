@@ -1,12 +1,16 @@
 import tensorflow as tf
 from model_cls import pointnet2
 import matplotlib
+
 matplotlib.use('AGG')
 import matplotlib.pyplot as plt
 import os
 from keras import backend as K
 from modelnet_h5_dataset import ModelNetH5Dataset
 import numpy as np
+from sklearn.metrics import precision_score, recall_score, f1_score, confusion_matrix
+import seaborn as sn
+import pandas as pd
 
 nb_classes = 40
 
@@ -24,6 +28,12 @@ decay_rate = 0.7
 summary_dir = 'summary'
 image_dir = 'result_image'
 train_log_dir = 'train_out'
+
+classes = []
+
+with open('data/modelnet40_ply_hdf5_2048/shape_names.txt', 'r') as shapeName:
+    for line in shapeName.readlines():
+        classes.append(line.strip())
 
 
 def plot_history(history, result_dir, show_on_train=True):
@@ -79,7 +89,7 @@ def save_history(history, result_dir):
     with open(os.path.join(result_dir, 'result.txt'), 'w') as fp:
         fp.write('epoch\tloss\tacc\tval_loss\tval_acc\n')
         for i in range(nb_epoch):
-            fp.write('{}\t{:.2f}\t{:.2%}\t{:.2f}\t{:.2%}\n'.format(
+            fp.write('{}\t{:.4f}\t{:.2%}\t{:.4f}\t{:.2%}\n'.format(
                 i, loss[i], acc[i], val_loss[i], val_acc[i]))
         fp.close()
 
@@ -172,10 +182,9 @@ def train():
                 cur_batch_data = np.zeros((batch_size, num_point, train_dataset.num_channel()))
                 cur_batch_label = np.zeros(batch_size, dtype=np.int32)
 
-                total_correct = 0
-                total_seen = 0
-                loss_sum = 0
-                batch_idx = 0
+                train_total_correct = 0
+                train_total_seen = 0
+                train_loss_sum = 0
 
                 while train_dataset.has_next_batch():
                     batch_data, batch_label = train_dataset.next_batch(augment=True)
@@ -189,29 +198,22 @@ def train():
                                                                            is_training_pl: True,
                                                                        })
 
-                    train_writer.add_summary(summary, step)
-
                     pred_val = np.argmax(pred_val, 1)
                     correct = np.sum(pred_val[0:bsize] == batch_label[0:bsize])
-                    total_correct += correct
-                    total_seen += bsize
-                    loss_sum += loss_val
-                    if (batch_idx + 1) % 50 == 0:
-                        print(' ---- batch: {} ----'.format(batch_idx + 1))
-                        train_loss = loss_sum / 50
-                        print('mean loss:\t{:.2f}'.format(train_loss))
-                        train_acc = total_correct / float(total_seen)
-                        print('accuracy:\t{:.2%}'.format(train_acc))
+                    train_total_correct += correct
+                    train_total_seen += bsize
+                    train_loss_sum += loss_val
 
-                        if train_dataset.has_next_batch() is False:
-                            # only save these parameter on every epoch
-                            history['acc'].append(train_acc)
-                            history['loss'].append(train_loss)
+                train_loss = train_loss_sum / 50
+                print('mean loss:\t{:.4f}'.format(train_loss))
+                train_acc = train_total_correct / train_total_seen
+                print('accuracy:\t{:.2%}'.format(train_acc))
 
-                        total_correct = 0
-                        total_seen = 0
-                        loss_sum = 0
-                    batch_idx += 1
+                # only save these parameter on every epoch
+                history['acc'].append(train_acc)
+                history['loss'].append(train_loss)
+
+                train_writer.add_summary(summary, epoch)
 
                 train_dataset.reset()
 
@@ -235,17 +237,15 @@ def train():
                     cur_batch_data[0:bsize, ...] = batch_data
                     cur_batch_label[0:bsize] = batch_label
 
-                    _, loss_val, pred_val, summary, step = session.run([train_op, total_loss, pred, merged, batch],
-                                                                       feed_dict={
-                                                                           point_cloud: cur_batch_data,
-                                                                           labels: cur_batch_label,
-                                                                           is_training_pl: False,
-                                                                       })
+                    _, loss_val, test_pred_val, summary, step = session.run([train_op, total_loss, pred, merged, batch],
+                                                                            feed_dict={
+                                                                                point_cloud: cur_batch_data,
+                                                                                labels: cur_batch_label,
+                                                                                is_training_pl: False,
+                                                                            })
 
-                    test_writer.add_summary(summary, step)
-
-                    pred_val = np.argmax(pred_val, 1)
-                    correct = np.sum(pred_val[0:bsize] == batch_label[0:bsize])
+                    test_pred_val = np.argmax(test_pred_val, 1)
+                    correct = np.sum(test_pred_val[0:bsize] == batch_label[0:bsize])
                     total_correct += correct
                     total_seen += bsize
                     loss_sum += loss_val
@@ -253,19 +253,20 @@ def train():
                     for bindex in range(0, bsize):
                         the_lable = batch_label[bindex]
                         total_seen_class[the_lable] += 1
-                        total_correct_class[the_lable] += (pred_val[bindex] == the_lable)
+                        total_correct_class[the_lable] += (test_pred_val[bindex] == the_lable)
 
-                val_loss = loss_sum / float(batch_idx)
-                print('eval mean loss:\t{:.2f}'.format(val_loss))
-                val_acc = total_correct / float(total_seen)
+                val_loss = loss_sum / batch_idx
+                print('eval mean loss:\t{:.4f}'.format(val_loss))
+                val_acc = total_correct / total_seen
                 print('eval accuracy:\t{:.2%}'.format(val_acc))
                 print('eval avg class acc:\t{:.2%}'.format(
                     np.mean(np.array(total_correct_class) / np.array(total_seen_class, dtype=np.float))))
 
-                if test_dataset.has_next_batch() is False:
-                    # only save these parameter on every epoch
-                    history['val_acc'].append(val_acc)
-                    history['val_loss'].append(val_loss)
+                # only save these parameter on every epoch
+                history['val_acc'].append(val_acc)
+                history['val_loss'].append(val_loss)
+
+                test_writer.add_summary(summary, epoch)
 
                 test_dataset.reset()
 
@@ -275,6 +276,23 @@ def train():
 
             plot_history(history, image_dir)
             save_history(history, train_log_dir)
+
+            y_pred = test_pred_val
+            y_true = np.argmax(cur_batch_label, 1)
+            # 计算模型的 metrics
+            print("Precision", precision_score(y_true.tolist(), y_pred.tolist(), average='weighted'))
+            print("Recall", recall_score(y_true, y_pred, average='weighted'))
+            print("f1_score", f1_score(y_true, y_pred, average='weighted'))
+            print("confusion_matrix")
+            conf_mat = confusion_matrix(y_true, y_pred)
+            print(conf_mat)
+
+            df_cm = pd.DataFrame(conf_mat, index=[i for i in classes],
+                                 columns=[i for i in classes])
+            plt.figure(figsize=(10, 7))
+            sn.heatmap(df_cm, annot=True, fmt="d", cmap="YlGnBu")
+            plt.title('confusion matrix')
+            plt.show()
 
 
 if __name__ == '__main__':
