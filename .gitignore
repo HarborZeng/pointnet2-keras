@@ -116,3 +116,5 @@ dmypy.json
 ModelNet40/
 
 .idea/
+
+data/*/
