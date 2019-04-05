@@ -1,9 +1,6 @@
 import tensorflow as tf
 from model_cls import pointnet2
 import matplotlib
-
-from pointnet2_cls_msg import placeholder_inputs
-
 matplotlib.use('AGG')
 import matplotlib.pyplot as plt
 import os
@@ -30,7 +27,6 @@ train_log_dir = 'train_out'
 
 
 def plot_history(history, result_dir, show_on_train=True):
-
     if not os.path.exists(result_dir):
         os.mkdir(result_dir)
 
@@ -94,7 +90,7 @@ def get_learning_rate(batch):
                                                decay_step,  # Decay step.
                                                decay_rate,  # Decay rate.
                                                staircase=True)
-    learning_rate = tf.maximum(learning_rate, 0.00001)  # CLIP THE LEARNING RATE!
+    learning_rate = K.maximum(learning_rate, 0.00001)  # CLIP THE LEARNING RATE!
     return learning_rate
 
 
@@ -104,7 +100,7 @@ def get_bn_decay(batch):
                                              bn_decay_decay_step,
                                              bn_decay_decay_rate,
                                              staircase=True)
-    bn_decay = tf.minimum(bn_decay_clip, 1 - bn_momentum)
+    bn_decay = K.minimum(bn_decay_clip, 1 - bn_momentum)
     return bn_decay
 
 
@@ -114,8 +110,9 @@ def train():
     test_dataset = ModelNetH5Dataset('data/modelnet40_ply_hdf5_2048/test_files.txt',
                                      batch_size=batch_size, npoints=num_point, shuffle=False)
 
-    point_cloud, labels = placeholder_inputs(batch_size, num_point)
-    is_training_pl = tf.placeholder(tf.bool, shape=())
+    point_cloud = K.placeholder(dtype=np.float32, shape=(batch_size, num_point, 3))
+    labels = K.placeholder(dtype=np.int32, shape=batch_size)
+    is_training_pl = K.placeholder(dtype=np.bool, shape=())
 
     # Note the global_step=batch parameter to minimize.
     # That tells the optimizer to helpfully increment the 'batch' parameter
@@ -137,8 +134,8 @@ def train():
     for the_lable in losses + [total_loss]:
         tf.summary.scalar(the_lable.op.name, the_lable)
 
-    correct = tf.equal(tf.argmax(pred, 1), tf.to_int64(labels))
-    accuracy = tf.reduce_sum(tf.cast(correct, tf.float32)) / float(batch_size)
+    correct = K.equal(K.argmax(pred, axis=1), tf.to_int64(labels))
+    accuracy = tf.reduce_sum(K.cast(correct, 'float32')) / batch_size
     tf.summary.scalar('accuracy', accuracy)
 
     learning_rate = get_learning_rate(batch)
@@ -167,7 +164,6 @@ def train():
                 "val_loss": []
             }
 
-
             for epoch in range(epochs):
                 # TODO: add early stop to prevent overfitting
                 print('**** EPOCH {} ****'.format(epoch))
@@ -186,11 +182,12 @@ def train():
                     bsize = batch_data.shape[0]
                     cur_batch_data[0:bsize, ...] = batch_data
                     cur_batch_label[0:bsize] = batch_label
-                    _, loss_val, pred_val, summary, step = session.run([train_op, total_loss, pred, merged, batch], feed_dict={
-                        point_cloud: cur_batch_data,
-                        labels: cur_batch_label,
-                        is_training_pl: True,
-                    })
+                    _, loss_val, pred_val, summary, step = session.run([train_op, total_loss, pred, merged, batch],
+                                                                       feed_dict={
+                                                                           point_cloud: cur_batch_data,
+                                                                           labels: cur_batch_label,
+                                                                           is_training_pl: True,
+                                                                       })
 
                     train_writer.add_summary(summary, step)
 
@@ -238,11 +235,12 @@ def train():
                     cur_batch_data[0:bsize, ...] = batch_data
                     cur_batch_label[0:bsize] = batch_label
 
-                    _, loss_val, pred_val, summary, step = session.run([train_op, total_loss, pred, merged, batch], feed_dict={
-                        point_cloud: cur_batch_data,
-                        labels: cur_batch_label,
-                        is_training_pl: False,
-                    })
+                    _, loss_val, pred_val, summary, step = session.run([train_op, total_loss, pred, merged, batch],
+                                                                       feed_dict={
+                                                                           point_cloud: cur_batch_data,
+                                                                           labels: cur_batch_label,
+                                                                           is_training_pl: False,
+                                                                       })
 
                     test_writer.add_summary(summary, step)
 

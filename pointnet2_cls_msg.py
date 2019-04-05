@@ -2,6 +2,7 @@ from util.tf_util import *
 from util.pointnet_util import pointnet_sa_module, pointnet_sa_module_msg
 import tensorflow as tf
 
+
 def placeholder_inputs(batch_size, num_point):
     pointclouds_pl = tf.placeholder(tf.float32, shape=(batch_size, num_point, 3))
     labels_pl = tf.placeholder(tf.int32, shape=(batch_size))
