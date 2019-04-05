@@ -94,9 +94,9 @@ def save_history(history, result_dir):
         fp.close()
 
 
-def get_learning_rate(batch):
+def get_learning_rate(epoch_index):
     learning_rate = tf.train.exponential_decay(0.001,  # Base learning rate.
-                                               batch * batch_size,  # Current index into the dataset.
+                                               epoch_index,  # Current index into the dataset.
                                                decay_step,  # Decay step.
                                                decay_rate,  # Decay rate.
                                                staircase=True)
@@ -104,9 +104,9 @@ def get_learning_rate(batch):
     return learning_rate
 
 
-def get_bn_decay(batch):
+def get_bn_decay(epoch_index):
     bn_momentum = tf.train.exponential_decay(bn_init_decay,
-                                             batch * batch_size,
+                                             epoch_index,
                                              bn_decay_decay_step,
                                              bn_decay_decay_rate,
                                              staircase=True)
@@ -127,16 +127,15 @@ def train():
     # Note the global_step=batch parameter to minimize.
     # That tells the optimizer to helpfully increment the 'batch' parameter
     # for you every time it trains.
-    batch = tf.get_variable('batch', [],
-                            initializer=tf.constant_initializer(0), trainable=False)
-    bn_decay = get_bn_decay(batch)
+    current_epoch = tf.Variable(0)
+    bn_decay = get_bn_decay(current_epoch)
     tf.summary.scalar('bn_decay', bn_decay)
 
     pred = pointnet2(point_cloud, nb_classes, is_training_pl)
 
     loss = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=pred, labels=labels)
     classify_loss = tf.reduce_mean(loss)
-    tf.summary.scalar('classify loss', classify_loss)
+    tf.summary.scalar('classify_loss', classify_loss)
     tf.add_to_collection('losses', classify_loss)
     losses = tf.get_collection('losses')
     total_loss = tf.add_n(losses, name='total_loss')
@@ -148,10 +147,10 @@ def train():
     accuracy = tf.reduce_sum(K.cast(correct, 'float32')) / batch_size
     tf.summary.scalar('accuracy', accuracy)
 
-    learning_rate = get_learning_rate(batch)
+    learning_rate = get_learning_rate(current_epoch)
     tf.summary.scalar('learning_rate', learning_rate)
 
-    train_op = tf.train.AdamOptimizer(learning_rate).minimize(total_loss, global_step=batch)
+    train_op = tf.train.AdamOptimizer(learning_rate).minimize(total_loss, global_step=current_epoch)
 
     saver = tf.train.Saver()
 
@@ -191,12 +190,13 @@ def train():
                     bsize = batch_data.shape[0]
                     cur_batch_data[0:bsize, ...] = batch_data
                     cur_batch_label[0:bsize] = batch_label
-                    _, loss_val, pred_val, summary, step = session.run([train_op, total_loss, pred, merged, batch],
-                                                                       feed_dict={
-                                                                           point_cloud: cur_batch_data,
-                                                                           labels: cur_batch_label,
-                                                                           is_training_pl: True,
-                                                                       })
+                    _, loss_val, pred_val, summary = session.run([train_op, total_loss, pred, merged],
+                                                                 feed_dict={
+                                                                     point_cloud: cur_batch_data,
+                                                                     labels: cur_batch_label,
+                                                                     is_training_pl: True,
+                                                                     current_epoch: epoch
+                                                                 })
 
                     pred_val = np.argmax(pred_val, 1)
                     correct = np.sum(pred_val[0:bsize] == batch_label[0:bsize])
@@ -237,12 +237,13 @@ def train():
                     cur_batch_data[0:bsize, ...] = batch_data
                     cur_batch_label[0:bsize] = batch_label
 
-                    _, loss_val, test_pred_val, summary, step = session.run([train_op, total_loss, pred, merged, batch],
-                                                                            feed_dict={
-                                                                                point_cloud: cur_batch_data,
-                                                                                labels: cur_batch_label,
-                                                                                is_training_pl: False,
-                                                                            })
+                    _, loss_val, test_pred_val, summary = session.run([train_op, total_loss, pred, merged],
+                                                                      feed_dict={
+                                                                          point_cloud: cur_batch_data,
+                                                                          labels: cur_batch_label,
+                                                                          is_training_pl: False,
+                                                                          current_epoch: epoch
+                                                                      })
 
                     test_pred_val = np.argmax(test_pred_val, 1)
                     correct = np.sum(test_pred_val[0:bsize] == batch_label[0:bsize])
