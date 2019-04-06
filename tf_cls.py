@@ -1,20 +1,14 @@
 import tensorflow as tf
 from model_cls import pointnet2
-import matplotlib
-
-matplotlib.use('AGG')
 import matplotlib.pyplot as plt
 import os
 from keras import backend as K
 from modelnet_h5_dataset import ModelNetH5Dataset
 import numpy as np
-from sklearn.metrics import precision_score, recall_score, f1_score, confusion_matrix
-import seaborn as sn
-import pandas as pd
 
 nb_classes = 40
 
-epochs = 100
+epochs = 500
 batch_size = 16
 num_point = 1024
 
@@ -94,24 +88,14 @@ def save_history(history, result_dir):
         fp.close()
 
 
-def get_learning_rate(epoch_index):
+def get_learning_rate(batch):
     learning_rate = tf.train.exponential_decay(0.001,  # Base learning rate.
-                                               epoch_index,  # Current index into the dataset.
+                                               batch * batch_size,  # Current index into the dataset.
                                                decay_step,  # Decay step.
                                                decay_rate,  # Decay rate.
                                                staircase=True)
     learning_rate = K.maximum(learning_rate, 0.00001)  # CLIP THE LEARNING RATE!
     return learning_rate
-
-
-def get_bn_decay(epoch_index):
-    bn_momentum = tf.train.exponential_decay(bn_init_decay,
-                                             epoch_index,
-                                             bn_decay_decay_step,
-                                             bn_decay_decay_rate,
-                                             staircase=True)
-    bn_decay = K.minimum(bn_decay_clip, 1 - bn_momentum)
-    return bn_decay
 
 
 def train():
@@ -127,9 +111,8 @@ def train():
     # Note the global_step=batch parameter to minimize.
     # That tells the optimizer to helpfully increment the 'batch' parameter
     # for you every time it trains.
-    current_epoch = tf.Variable(0)
-    bn_decay = get_bn_decay(current_epoch)
-    tf.summary.scalar('bn_decay', bn_decay)
+    batch = tf.get_variable('batch', [],
+                            initializer=tf.constant_initializer(0), trainable=False)
 
     pred = pointnet2(point_cloud, nb_classes, is_training_pl)
 
@@ -147,10 +130,10 @@ def train():
     accuracy = tf.reduce_sum(K.cast(correct, 'float32')) / batch_size
     tf.summary.scalar('accuracy', accuracy)
 
-    learning_rate = get_learning_rate(current_epoch)
+    learning_rate = get_learning_rate(batch)
     tf.summary.scalar('learning_rate', learning_rate)
 
-    train_op = tf.train.AdamOptimizer(learning_rate).minimize(total_loss, global_step=current_epoch)
+    train_op = tf.train.AdamOptimizer(learning_rate).minimize(total_loss, global_step=batch)
 
     saver = tf.train.Saver()
 
@@ -158,7 +141,6 @@ def train():
 
     merged = tf.summary.merge_all()
     train_writer = tf.summary.FileWriter(os.path.join(summary_dir, 'train'), session.graph)
-    test_writer = tf.summary.FileWriter(os.path.join(summary_dir, 'test'), session.graph)
 
     init_op = tf.global_variables_initializer()
     session.run(init_op)
@@ -174,7 +156,6 @@ def train():
             }
 
             for epoch in range(epochs):
-                current_epoch = epoch
                 # TODO: add early stop to prevent overfitting
                 print('**** EPOCH {} ****'.format(epoch))
 
@@ -192,12 +173,15 @@ def train():
                     bsize = batch_data.shape[0]
                     cur_batch_data[0:bsize, ...] = batch_data
                     cur_batch_label[0:bsize] = batch_label
-                    _, loss_val, pred_val, summary = session.run([train_op, total_loss, pred, merged],
-                                                                 feed_dict={
-                                                                     point_cloud: cur_batch_data,
-                                                                     labels: cur_batch_label,
-                                                                     is_training_pl: True,
-                                                                 })
+                    _, loss_val, pred_val, summary, step = session.run(
+                        [train_op, total_loss, pred, merged, batch],
+                        feed_dict={
+                            point_cloud: cur_batch_data,
+                            labels: cur_batch_label,
+                            is_training_pl: True,
+                        })
+
+                    train_writer.add_summary(summary, step)
 
                     pred_val = np.argmax(pred_val, 1)
                     correct = np.sum(pred_val[0:bsize] == batch_label[0:bsize])
@@ -207,15 +191,13 @@ def train():
                     train_batch_idx += 1
 
                 train_loss = train_loss_sum / train_batch_idx
-                print('mean loss:\t{:.4f}'.format(train_loss))
+                print('mean loss:\t\t{:.4f}'.format(train_loss))
                 train_acc = train_total_correct / train_total_seen
-                print('accuracy:\t{:.2%}'.format(train_acc))
+                print('accuracy:\t\t{:.2%}'.format(train_acc))
 
                 # only save these parameter on every epoch
                 history['acc'].append(train_acc)
                 history['loss'].append(train_loss)
-
-                train_writer.add_summary(summary, epoch)
 
                 train_dataset.reset()
 
@@ -239,13 +221,13 @@ def train():
                     cur_batch_data[0:bsize, ...] = batch_data
                     cur_batch_label[0:bsize] = batch_label
 
-                    _, loss_val, test_pred_val, summary = session.run([train_op, total_loss, pred, merged],
-                                                                      feed_dict={
-                                                                          point_cloud: cur_batch_data,
-                                                                          labels: cur_batch_label,
-                                                                          is_training_pl: False,
-                                                                      })
-
+                    _, loss_val, test_pred_val, summary = session.run(
+                        [train_op, total_loss, pred, merged],
+                        feed_dict={
+                            point_cloud: cur_batch_data,
+                            labels: cur_batch_label,
+                            is_training_pl: False,
+                        })
                     test_pred_val = np.argmax(test_pred_val, 1)
                     correct = np.sum(test_pred_val[0:bsize] == batch_label[0:bsize])
                     total_correct += correct
@@ -258,17 +240,15 @@ def train():
                         total_correct_class[the_lable] += (test_pred_val[bindex] == the_lable)
 
                 val_loss = loss_sum / batch_idx
-                print('eval mean loss:\t{:.4f}'.format(val_loss))
+                print('eval mean loss:\t\t{:.4f}'.format(val_loss))
                 val_acc = total_correct / total_seen
-                print('eval accuracy:\t{:.2%}'.format(val_acc))
+                print('eval accuracy:\t\t{:.2%}'.format(val_acc))
                 print('eval avg class acc:\t{:.2%}'.format(
                     np.mean(np.array(total_correct_class) / np.array(total_seen_class, dtype=np.float))))
 
                 # only save these parameter on every epoch
                 history['val_acc'].append(val_acc)
                 history['val_loss'].append(val_loss)
-
-                test_writer.add_summary(summary, epoch)
 
                 test_dataset.reset()
 
@@ -278,26 +258,6 @@ def train():
 
             plot_history(history, image_dir)
             save_history(history, train_log_dir)
-
-            conf_mat = tf.confusion_matrix(labels, pred).eval(session=session)
-            print("confusion_matrix")
-            print(conf_mat)
-
-            plot_cm(conf_mat, image_dir)
-
-
-def plot_cm(conf_mat, image_dir):
-    df_cm = pd.DataFrame(conf_mat, index=[i for i in classes],
-                         columns=[i for i in classes])
-    plt.figure(figsize=(10, 7))
-    sn.heatmap(df_cm, annot=True, fmt="d", cmap="YlGnBu")
-    plt.title('confusion matrix')
-
-    if os.path.exists(os.path.join(image_dir, 'confusion_matrix.png')):
-        os.remove(os.path.join(image_dir, 'confusion_matrix.png'))
-    plt.savefig(os.path.join(image_dir, 'confusion_matrix.png'))
-
-    plt.show()
 
 
 if __name__ == '__main__':
