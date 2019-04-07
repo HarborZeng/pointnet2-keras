@@ -168,7 +168,7 @@ def train():
                 # TODO: add early stop to prevent overfitting
                 print('**** EPOCH {} ****'.format(epoch))
 
-                # Make sure global_step data is of same size
+                # Make sure batch data is of same size
                 cur_batch_data = np.zeros((batch_size, num_point, train_dataset.num_channel()))
                 cur_batch_label = np.zeros(batch_size, dtype=np.int32)
 

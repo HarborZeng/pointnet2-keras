@@ -38,32 +38,38 @@ with tf.Session() as sess:
     total_batch_count = 0
 
     while train_dataset.has_next_batch():
-
         batch_data, batch_label = train_dataset.next_batch()
         bsize = batch_data.shape[0]
         total_batch_count += bsize
         cur_batch_data[0:bsize, ...] = batch_data
         cur_batch_label[0:bsize] = batch_label
 
-        preditions = sess.run([top_k_op])
+        preditions = sess.run([top_k_op], feed_dict={
+            point_cloud: cur_batch_data,
+            labels: cur_batch_label,
+            is_training_pl: False,
+        })
         true_count += np.sum(preditions)
 
         precision = true_count / total_batch_count
-        print('train dataset cumulative precision is {}'.format(precision))
+        print('train dataset cumulative precision is {:.4%}'.format(precision))
 
     while test_dataset.has_next_batch():
-
-        batch_data, batch_label = train_dataset.next_batch()
+        batch_data, batch_label = test_dataset.next_batch()
         bsize = batch_data.shape[0]
         total_batch_count += bsize
         cur_batch_data[0:bsize, ...] = batch_data
         cur_batch_label[0:bsize] = batch_label
 
-        preditions = sess.run([top_k_op])
+        preditions = sess.run([top_k_op],  feed_dict={
+            point_cloud: cur_batch_data,
+            labels: cur_batch_label,
+            is_training_pl: False,
+        })
         true_count += np.sum(preditions)
 
         precision = true_count / total_batch_count
-        print('test dataset cumulative precision is {}'.format(precision))
+        print('test dataset cumulative precision is {:.4%}'.format(precision))
 
     train_dataset.reset()
     test_dataset.reset()
