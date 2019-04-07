@@ -5,7 +5,6 @@ import numpy as np
 from modelnet_h5_dataset import ModelNetH5Dataset
 from tf_cls import batch_size, num_point, nb_classes, summary_dir
 from model_cls import pointnet2
-import os
 
 shuffle = False
 
@@ -25,7 +24,7 @@ top_k_op = tf.nn.in_top_k(logits, labels, 1)
 saver = tf.train.Saver()
 
 with tf.Session() as sess:
-    ckpt = tf.train.get_checkpoint_state(os.path.join(summary_dir, "model.ckpt"))
+    ckpt = tf.train.get_checkpoint_state(summary_dir)
     if ckpt and ckpt.model_checkpoint_path:
         # Restores from checkpoint
         saver.restore(sess, ckpt.model_checkpoint_path)
@@ -36,6 +35,9 @@ with tf.Session() as sess:
     cur_batch_label = np.zeros(batch_size, dtype=np.int32)
     true_count = 0
     total_batch_count = 0
+
+    init_op = tf.global_variables_initializer()
+    sess.run(init_op)
 
     while train_dataset.has_next_batch():
         batch_data, batch_label = train_dataset.next_batch()
