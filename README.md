@@ -28,6 +28,15 @@
 
 运行`tensorboard --logdir summary`
 
+## 性能
+
+1. 训练集精确率和验证集精确率
+
+![训练集精确率和验证集精确率](https://raw.githubusercontent.com/HarborZeng/pointnet2-keras/master/result_image/model_accuracy.png)
+
+2. 训练集损失和验证集损失率
+
+![训练集损失和验证集损失率](https://raw.githubusercontent.com/HarborZeng/pointnet2-keras/master/result_image/model_loss.png)
 
 ## TODO
 
