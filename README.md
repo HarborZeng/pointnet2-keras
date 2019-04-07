@@ -40,6 +40,10 @@
 
 ![训练集损失和验证集损失率](https://raw.githubusercontent.com/HarborZeng/pointnet2-keras/master/result_image/model_loss.png)
 
+3. 利用keras构建的神经网络
+
+![利用keras构建的神经网络](https://raw.githubusercontent.com/HarborZeng/pointnet2-keras/master/result_image/nn_graph.gif)
+
 ## TODO
 
 - [ ] part segmentation
