@@ -6,9 +6,12 @@ from keras import backend as K
 from modelnet_h5_dataset import ModelNetH5Dataset
 import numpy as np
 
+# total number of classes
 nb_classes = 40
 
+# the epoch count to train
 epochs = 200
+# the size of ever mini-batch
 batch_size = 16
 num_point = 1024
 
@@ -23,6 +26,7 @@ summary_dir = 'summary'
 image_dir = 'result_image'
 train_log_dir = 'train_out'
 
+# the classes list
 classes = []
 
 with open('data/modelnet40_ply_hdf5_2048/shape_names.txt', 'r') as shapeName:
@@ -88,9 +92,9 @@ def save_history(history, result_dir):
         fp.close()
 
 
-def get_learning_rate(batch):
+def get_learning_rate(step):
     learning_rate = tf.train.exponential_decay(0.001,  # Base learning rate.
-                                               batch * batch_size,  # Current index into the dataset.
+                                               step * batch_size,  # Current index into the dataset.
                                                decay_step,  # Decay step.
                                                decay_rate,  # Decay rate.
                                                staircase=True)
@@ -108,36 +112,41 @@ def train():
     labels = K.placeholder(dtype=np.int32, shape=batch_size)
     is_training_pl = K.placeholder(dtype=np.bool, shape=())
 
-    # Note the global_step=batch parameter to minimize.
-    # That tells the optimizer to helpfully increment the 'batch' parameter
+    # Note the global_step=global_step parameter to minimize.
+    # That tells the optimizer to helpfully increment the 'global_step' parameter
     # for you every time it trains.
-    batch = tf.get_variable('batch', [],
-                            initializer=tf.constant_initializer(0), trainable=False)
+    global_step = tf.train.get_or_create_global_step()
 
-    pred = pointnet2(point_cloud, nb_classes, is_training_pl)
+    logits = pointnet2(point_cloud, nb_classes, is_training_pl)
 
-    loss = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=pred, labels=labels)
-    classify_loss = tf.reduce_mean(loss)
-    tf.summary.scalar('classify_loss', classify_loss)
-    tf.add_to_collection('losses', classify_loss)
+    cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=labels)
+    cross_entropy_mean = tf.reduce_mean(cross_entropy)
+    tf.add_to_collection('losses', cross_entropy_mean)
     losses = tf.get_collection('losses')
     total_loss = tf.add_n(losses, name='total_loss')
     tf.summary.scalar('total_loss', total_loss)
     for the_lable in losses + [total_loss]:
         tf.summary.scalar(the_lable.op.name, the_lable)
 
-    correct = K.equal(K.argmax(pred, axis=1), tf.to_int64(labels))
+    correct = K.equal(K.argmax(logits, axis=1), tf.to_int64(labels))
     accuracy = tf.reduce_sum(K.cast(correct, 'float32')) / batch_size
     tf.summary.scalar('accuracy', accuracy)
 
-    learning_rate = get_learning_rate(batch)
+    learning_rate = get_learning_rate(global_step)
     tf.summary.scalar('learning_rate', learning_rate)
 
-    train_op = tf.train.AdamOptimizer(learning_rate).minimize(total_loss, global_step=batch)
+    train_op = tf.train.AdamOptimizer(learning_rate).minimize(total_loss, global_step=global_step)
 
     saver = tf.train.Saver()
 
     session = K.get_session()
+
+    # Add histograms for trainable variables.
+    for var in tf.trainable_variables():
+        tf.summary.histogram(var.op.name, var)
+
+    # delete previous summary and ckpt file
+    tf.gfile.DeleteRecursively(summary_dir)
 
     merged = tf.summary.merge_all()
     train_writer = tf.summary.FileWriter(os.path.join(summary_dir, 'train'), session.graph)
@@ -159,7 +168,7 @@ def train():
                 # TODO: add early stop to prevent overfitting
                 print('**** EPOCH {} ****'.format(epoch))
 
-                # Make sure batch data is of same size
+                # Make sure global_step data is of same size
                 cur_batch_data = np.zeros((batch_size, num_point, train_dataset.num_channel()))
                 cur_batch_label = np.zeros(batch_size, dtype=np.int32)
 
@@ -174,7 +183,7 @@ def train():
                     cur_batch_data[0:bsize, ...] = batch_data
                     cur_batch_label[0:bsize] = batch_label
                     _, loss_val, pred_val, summary, step = session.run(
-                        [train_op, total_loss, pred, merged, batch],
+                        [train_op, total_loss, logits, merged, global_step],
                         feed_dict={
                             point_cloud: cur_batch_data,
                             labels: cur_batch_label,
@@ -201,7 +210,7 @@ def train():
 
                 train_dataset.reset()
 
-                # Make sure batch data is of same size
+                # Make sure global_step data is of same size
                 cur_batch_data = np.zeros((batch_size, num_point, test_dataset.num_channel()))
                 cur_batch_label = np.zeros(batch_size, dtype=np.int32)
 
@@ -217,12 +226,12 @@ def train():
                 while test_dataset.has_next_batch():
                     batch_data, batch_label = test_dataset.next_batch(augment=False)
                     bsize = batch_data.shape[0]
-                    # for the last batch in the epoch, the bsize:end are from last batch
+                    # for the last global_step in the epoch, the bsize:end are from last global_step
                     cur_batch_data[0:bsize, ...] = batch_data
                     cur_batch_label[0:bsize] = batch_label
 
                     _, loss_val, test_pred_val, summary = session.run(
-                        [train_op, total_loss, pred, merged],
+                        [train_op, total_loss, logits, merged],
                         feed_dict={
                             point_cloud: cur_batch_data,
                             labels: cur_batch_label,

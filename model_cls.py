@@ -51,8 +51,8 @@ def pointnet2(input_points, nb_classes, is_training):
     c = BatchNormalization()(c, training=is_training)
     c = Dropout(0.4)(c, training=is_training)
     # a fully connected layer without activation func
-    prediction = Dense(nb_classes)(c)
-    return prediction
+    logits = Dense(nb_classes)(c)
+    return logits
 
 
 def set_abstraction_msg(xyz, points, npoint, radius_list, nsample_list, mlp_list, is_training, use_nchw):
