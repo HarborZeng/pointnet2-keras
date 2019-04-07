@@ -5,6 +5,9 @@ import os
 from keras import backend as K
 from modelnet_h5_dataset import ModelNetH5Dataset
 import numpy as np
+from pointnet2_cls_msg import get_model
+
+use_keras_model = False
 
 # total number of classes
 nb_classes = 40
@@ -102,6 +105,17 @@ def get_learning_rate(step):
     return learning_rate
 
 
+def get_bn_decay(batch):
+    bn_momentum = tf.train.exponential_decay(
+        bn_init_decay,
+        batch * batch_size,
+        bn_decay_decay_step,
+        bn_decay_decay_rate,
+        staircase=True)
+    bn_decay = tf.minimum(bn_decay_clip, 1 - bn_momentum)
+    return bn_decay
+
+
 def train():
     train_dataset = ModelNetH5Dataset('./data/modelnet40_ply_hdf5_2048/train_files.txt',
                                       batch_size=batch_size, npoints=num_point, shuffle=True)
@@ -117,7 +131,10 @@ def train():
     # for you every time it trains.
     global_step = tf.train.get_or_create_global_step()
 
-    logits = pointnet2(point_cloud, nb_classes, is_training_pl)
+    if use_keras_model:
+        logits = pointnet2(point_cloud, nb_classes, is_training_pl)
+    else:
+        get_model(point_cloud, is_training_pl, get_bn_decay(global_step))
 
     cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=labels)
     cross_entropy_mean = tf.reduce_mean(cross_entropy)
