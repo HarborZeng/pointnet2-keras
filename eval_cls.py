@@ -14,13 +14,6 @@ train_dataset = ModelNetH5Dataset('./data/modelnet40_ply_hdf5_2048/train_files.t
 test_dataset = ModelNetH5Dataset('data/modelnet40_ply_hdf5_2048/test_files.txt',
                                  batch_size=batch_size, npoints=num_point, shuffle=shuffle)
 
-point_cloud = K.placeholder(dtype=np.float32, shape=(batch_size, num_point, 3))
-labels = K.placeholder(dtype=np.int32, shape=batch_size)
-is_training_pl = K.placeholder(dtype=np.bool, shape=())
-
-logits = pointnet2(point_cloud, nb_classes, is_training_pl)
-top_k_op = tf.nn.in_top_k(logits, labels, 1)
-
 saver = tf.train.Saver()
 
 with tf.Session() as sess:
@@ -46,11 +39,9 @@ with tf.Session() as sess:
         cur_batch_data[0:bsize, ...] = batch_data
         cur_batch_label[0:bsize] = batch_label
 
-        preditions = sess.run([top_k_op], feed_dict={
-            point_cloud: cur_batch_data,
-            labels: cur_batch_label,
-            is_training_pl: False,
-        })
+        top_k_op = tf.nn.in_top_k(pointnet2(cur_batch_data, nb_classes, False), cur_batch_label, 1)
+
+        preditions = sess.run([top_k_op])
         true_count += np.sum(preditions)
 
         precision = true_count / total_batch_count
@@ -63,11 +54,9 @@ with tf.Session() as sess:
         cur_batch_data[0:bsize, ...] = batch_data
         cur_batch_label[0:bsize] = batch_label
 
-        preditions = sess.run([top_k_op],  feed_dict={
-            point_cloud: cur_batch_data,
-            labels: cur_batch_label,
-            is_training_pl: False,
-        })
+        top_k_op = tf.nn.in_top_k(pointnet2(cur_batch_data, nb_classes, False), cur_batch_label, 1)
+
+        preditions = sess.run([top_k_op])
         true_count += np.sum(preditions)
 
         precision = true_count / total_batch_count
