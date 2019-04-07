@@ -8,7 +8,7 @@ import numpy as np
 
 nb_classes = 40
 
-epochs = 500
+epochs = 120
 batch_size = 16
 num_point = 1024
 
