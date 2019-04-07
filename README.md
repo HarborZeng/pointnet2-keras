@@ -1,5 +1,7 @@
 # pointnet2-keras
 
+> For English readme doc, please open an issue, I may consider to create one. If I am not, you can just use chrome to translate.
+
 ## 介绍
 
 本项目是基于[pointnet2](https://github.com/charlesq34/pointnet2)的一个衍生项目，主要作用是基于keras构建pointnet2的神经网络。
