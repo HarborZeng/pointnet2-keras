@@ -7,7 +7,9 @@ from modelnet_h5_dataset import ModelNetH5Dataset
 import numpy as np
 from pointnet2_cls_msg import get_model
 
-use_keras_model = False
+# specify to use keras model (implemented by HarborZeng)
+# or tensorflow model (implemented by CharlesQi)
+use_keras_model = True
 
 # total number of classes
 nb_classes = 40
@@ -134,7 +136,7 @@ def train():
     if use_keras_model:
         logits = pointnet2(point_cloud, nb_classes, is_training_pl)
     else:
-        get_model(point_cloud, is_training_pl, get_bn_decay(global_step))
+        logits = get_model(point_cloud, is_training_pl, get_bn_decay(global_step))
 
     cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=labels)
     cross_entropy_mean = tf.reduce_mean(cross_entropy)
