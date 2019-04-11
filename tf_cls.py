@@ -6,6 +6,8 @@ from keras import backend as K
 from modelnet_h5_dataset import ModelNetH5Dataset
 import numpy as np
 from pointnet2_cls_msg import get_model
+from tqdm import tqdm
+import time
 
 # specify to use keras model (implemented by HarborZeng)
 # or tensorflow model (implemented by CharlesQi)
@@ -44,12 +46,12 @@ def plot_history(history, result_dir, show_on_train=True):
         os.mkdir(result_dir)
 
     plt.plot(history['acc'], marker='.')
-    plt.plot(history['val_acc'], marker='.')
+    plt.plot(history['test_acc'], marker='.')
     plt.title('model accuracy')
     plt.xlabel('epoch')
     plt.ylabel('accuracy')
     plt.grid()
-    plt.legend(['acc', 'val_acc'], loc='lower right')
+    plt.legend(['acc', 'test_acc'], loc='lower right')
 
     if os.path.exists(os.path.join(result_dir, 'model_accuracy.png')):
         os.remove(os.path.join(result_dir, 'model_accuracy.png'))
@@ -61,12 +63,12 @@ def plot_history(history, result_dir, show_on_train=True):
     plt.close()
 
     plt.plot(history['loss'], marker='.')
-    plt.plot(history['val_loss'], marker='.')
+    plt.plot(history['test_loss'], marker='.')
     plt.title('model loss')
     plt.xlabel('epoch')
     plt.ylabel('loss')
     plt.grid()
-    plt.legend(['loss', 'val_loss'], loc='upper right')
+    plt.legend(['loss', 'test_loss'], loc='upper right')
 
     if os.path.exists(os.path.join(result_dir, 'model_loss.png')):
         os.remove(os.path.join(result_dir, 'model_loss.png'))
@@ -82,15 +84,15 @@ def plot_history(history, result_dir, show_on_train=True):
 def save_history(history, result_dir):
     loss = history['loss']
     acc = history['acc']
-    val_loss = history['val_loss']
-    val_acc = history['val_acc']
+    val_loss = history['test_loss']
+    val_acc = history['test_acc']
     nb_epoch = len(acc)
 
     if not os.path.exists(result_dir):
         os.mkdir(result_dir)
 
     with open(os.path.join(result_dir, 'result.txt'), 'w') as fp:
-        fp.write('epoch\tloss\tacc\tval_loss\tval_acc\n')
+        fp.write('epoch\tloss\tacc\ttest_loss\ttest_acc\n')
         for i in range(nb_epoch):
             fp.write('{}\t{}\t{}\t{}\t{}\n'.format(
                 i, loss[i], acc[i], val_loss[i], val_acc[i]))
@@ -121,7 +123,7 @@ def get_bn_decay(batch):
 def train():
     train_dataset = ModelNetH5Dataset('./data/modelnet40_ply_hdf5_2048/train_files.txt',
                                       batch_size=batch_size, npoints=num_point, shuffle=True)
-    test_dataset = ModelNetH5Dataset('data/modelnet40_ply_hdf5_2048/test_files.txt',
+    test_dataset = ModelNetH5Dataset('./data/modelnet40_ply_hdf5_2048/test_files.txt',
                                      batch_size=batch_size, npoints=num_point, shuffle=False)
 
     point_cloud = K.placeholder(dtype=np.float32, shape=(batch_size, num_point, 3))
@@ -178,14 +180,14 @@ def train():
 
             history = {
                 "acc": [],
-                "val_acc": [],
+                "test_acc": [],
                 "loss": [],
-                "val_loss": []
+                "test_loss": []
             }
 
             for epoch in range(epochs):
-                # TODO: add early stop to prevent overfitting
                 print('**** EPOCH {} ****'.format(epoch))
+                time.sleep(4)
 
                 # Make sure batch data is of same size
                 cur_batch_data = np.zeros((batch_size, num_point, train_dataset.num_channel()))
@@ -196,28 +198,34 @@ def train():
                 train_loss_sum = 0
                 train_batch_idx = 0
 
-                while train_dataset.has_next_batch():
-                    batch_data, batch_label = train_dataset.next_batch(augment=True)
-                    bsize = batch_data.shape[0]
-                    cur_batch_data[0:bsize, ...] = batch_data
-                    cur_batch_label[0:bsize] = batch_label
-                    _, loss_val, pred_val, summary, step = session.run(
-                        [train_op, total_loss, logits, merged, global_step],
-                        feed_dict={
-                            point_cloud: cur_batch_data,
-                            labels: cur_batch_label,
-                            is_training_pl: True,
-                        })
+                with tqdm(total=train_dataset.total_batch(), unit='batches') as pbar:
+                    while train_dataset.has_next_batch():
+                        batch_data, batch_label = train_dataset.next_batch(augment=True)
+                        bsize = batch_data.shape[0]
+                        cur_batch_data[0:bsize, ...] = batch_data
+                        cur_batch_label[0:bsize] = batch_label
+                        _, loss_val, pred_val, summary, step = session.run(
+                            [train_op, total_loss, logits, merged, global_step],
+                            feed_dict={
+                                point_cloud: cur_batch_data,
+                                labels: cur_batch_label,
+                                is_training_pl: True,
+                            })
 
-                    train_writer.add_summary(summary, step)
+                        train_writer.add_summary(summary, step)
 
-                    pred_val = np.argmax(pred_val, 1)
-                    correct = np.sum(pred_val[0:bsize] == batch_label[0:bsize])
-                    train_total_correct += correct
-                    train_total_seen += bsize
-                    train_loss_sum += loss_val
-                    train_batch_idx += 1
+                        pred_val = np.argmax(pred_val, 1)
+                        correct = np.sum(pred_val[0:bsize] == batch_label[0:bsize])
+                        train_total_correct += correct
+                        train_total_seen += bsize
+                        train_loss_sum += loss_val
+                        train_batch_idx += 1
 
+                        train_acc = correct / bsize
+                        pbar.set_description('train_acc:\t{:.2%}, train_loss:\t{:.4f}'.format(train_acc, loss_val))
+                        pbar.update()
+
+                time.sleep(4)
                 train_loss = train_loss_sum / train_batch_idx
                 print('mean loss:\t\t{:.4f}'.format(train_loss))
                 train_acc = train_total_correct / train_total_seen
@@ -241,48 +249,55 @@ def train():
                 total_correct_class = [0 for _ in range(nb_classes)]
 
                 print('---- EPOCH {} EVALUATION ----'.format(epoch))
+                time.sleep(4)
 
-                while test_dataset.has_next_batch():
-                    batch_data, batch_label = test_dataset.next_batch(augment=False)
-                    bsize = batch_data.shape[0]
-                    # for the last global_step in the epoch, the bsize:end are from last global_step
-                    cur_batch_data[0:bsize, ...] = batch_data
-                    cur_batch_label[0:bsize] = batch_label
+                with tqdm(total=test_dataset.total_batch(), unit='batches') as pbar:
+                    while test_dataset.has_next_batch():
+                        batch_data, batch_label = test_dataset.next_batch(augment=False)
+                        bsize = batch_data.shape[0]
+                        # for the last global_step in the epoch, the bsize:end are from last global_step
+                        cur_batch_data[0:bsize, ...] = batch_data
+                        cur_batch_label[0:bsize] = batch_label
 
-                    _, loss_val, test_pred_val, summary = session.run(
-                        [train_op, total_loss, logits, merged],
-                        feed_dict={
-                            point_cloud: cur_batch_data,
-                            labels: cur_batch_label,
-                            is_training_pl: False,
-                        })
-                    test_pred_val = np.argmax(test_pred_val, 1)
-                    correct = np.sum(test_pred_val[0:bsize] == batch_label[0:bsize])
-                    total_correct += correct
-                    total_seen += bsize
-                    loss_sum += loss_val
-                    batch_idx += 1
-                    for bindex in range(0, bsize):
-                        the_lable = batch_label[bindex]
-                        total_seen_class[the_lable] += 1
-                        total_correct_class[the_lable] += (test_pred_val[bindex] == the_lable)
+                        _, loss_val, test_pred_val, summary = session.run(
+                            [train_op, total_loss, logits, merged],
+                            feed_dict={
+                                point_cloud: cur_batch_data,
+                                labels: cur_batch_label,
+                                is_training_pl: False,
+                            })
+                        test_pred_val = np.argmax(test_pred_val, 1)
+                        correct = np.sum(test_pred_val[0:bsize] == batch_label[0:bsize])
+                        total_correct += correct
+                        total_seen += bsize
+                        loss_sum += loss_val
+                        batch_idx += 1
+                        for bindex in range(0, bsize):
+                            the_lable = batch_label[bindex]
+                            total_seen_class[the_lable] += 1
+                            total_correct_class[the_lable] += (test_pred_val[bindex] == the_lable)
 
-                val_loss = loss_sum / batch_idx
-                print('eval mean loss:\t\t{:.4f}'.format(val_loss))
-                val_acc = total_correct / total_seen
-                print('eval accuracy:\t\t{:.2%}'.format(val_acc))
+                        test_acc = correct / bsize
+                        pbar.set_description('test_acc:\t{:.2%}, test_loss:\t{:.4f}. '.format(test_acc, loss_val))
+                        pbar.update()
+
+                time.sleep(4)
+                test_loss = loss_sum / batch_idx
+                print('eval mean loss:\t\t{:.4f}'.format(test_loss))
+                test_acc = total_correct / total_seen
+                print('eval accuracy:\t\t{:.2%}'.format(test_acc))
                 print('eval avg class acc:\t{:.2%}'.format(
                     np.mean(np.array(total_correct_class) / np.array(total_seen_class, dtype=np.float))))
 
                 # only save these parameter on every epoch
-                history['val_acc'].append(val_acc)
-                history['val_loss'].append(val_loss)
+                history['test_acc'].append(test_acc)
+                history['test_loss'].append(test_loss)
 
                 test_dataset.reset()
 
-                if epoch % 10 == 0:
+                if (epoch + 1) % 10 == 0:
                     save_path = saver.save(session, os.path.join(summary_dir, "model.ckpt"))
-                    print("Model saved in file: {}".format(save_path))
+                    print("\nModel saved in file: {}".format(save_path))
 
             plot_history(history, image_dir)
             save_history(history, train_log_dir)

@@ -62,6 +62,7 @@ class ModelNetH5Dataset(object):
         self.shuffle = shuffle
         self.h5_files = getDataFiles(self.list_filename)
         self.reset()
+        self.total_batch_nb = self.calc_total_batch()
 
     def reset(self):
         ''' reset order of h5 files '''
@@ -119,11 +120,29 @@ class ModelNetH5Dataset(object):
         if augment: data_batch = self._augment_batch_data(data_batch)
         return data_batch, label_batch
 
+    def calc_total_batch(self):
+        counter = 0
+        while self.has_next_batch():
+            self.next_batch()
+            counter += 1
+        self.reset()
+        return counter
+
+    def total_batch(self):
+        return self.total_batch_nb
+
 
 if __name__ == '__main__':
-    d = ModelNetH5Dataset('data/modelnet40_ply_hdf5_2048/train_files.txt')
-    print(d.shuffle)
-    print(d.has_next_batch())
-    ps_batch, cls_batch = d.next_batch(True)
-    print(ps_batch.shape)
-    print(cls_batch.shape)
+    # the classes list
+    classes = []
+
+    with open('data/modelnet40_ply_hdf5_2048/shape_names.txt', 'r') as shapeName:
+        for line in shapeName.readlines():
+            classes.append(line.strip())
+
+    d = ModelNetH5Dataset('data/modelnet40_ply_hdf5_2048/train_files.txt', batch_size=16, npoints=1024)
+    print(d.total_batch())
+    if d.has_next_batch():
+        data, label = d.next_batch()
+        print(data.shape)
+
