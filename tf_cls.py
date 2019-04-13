@@ -10,6 +10,7 @@ from tqdm import tqdm
 import time
 import pandas as pd
 import seaborn as sn
+from sklearn.metrics import precision_score, recall_score, f1_score
 
 # specify to use keras model (implemented by HarborZeng)
 # or tensorflow model (implemented by CharlesQi)
@@ -89,16 +90,19 @@ def save_history(history, result_dir):
     acc = history['acc']
     val_loss = history['test_loss']
     val_acc = history['test_acc']
+    ps = history['precision_score']
+    recall = history['recall_score']
+    fs = history['f1_score']
     nb_epoch = len(acc)
 
     if not os.path.exists(result_dir):
         os.mkdir(result_dir)
 
     with open(os.path.join(result_dir, 'result.txt'), 'w') as fp:
-        fp.write('epoch\tloss\tacc\ttest_loss\ttest_acc\n')
+        fp.write('epoch\tloss\tacc\ttest_loss\ttest_acc\tprecision_score\trecall\tf1_score\n')
         for i in range(nb_epoch):
-            fp.write('{}\t{}\t{}\t{}\t{}\n'.format(
-                i, loss[i], acc[i], val_loss[i], val_acc[i]))
+            fp.write('{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\n'.format(
+                i, loss[i], acc[i], val_loss[i], val_acc[i], ps[i], recall[i], fs[i]))
         fp.close()
 
 
@@ -185,7 +189,10 @@ def train():
                 "acc": [],
                 "test_acc": [],
                 "loss": [],
-                "test_loss": []
+                "test_loss": [],
+                "precision_score": [],
+                "recall_score": [],
+                "f1_score": [],
             }
 
             for epoch in range(epochs):
@@ -258,7 +265,7 @@ def train():
 
                 with tqdm(total=test_dataset.total_batch(), unit='batches') as pbar:
                     while test_dataset.has_next_batch():
-                        batch_data, batch_label = test_dataset.next_batch(augment=False)
+                        batch_data, batch_label = test_dataset.next_batch(augment=True)
                         bsize = batch_data.shape[0]
                         # for the last global_step in the epoch, the bsize:end are from last global_step
                         cur_batch_data[0:bsize, ...] = batch_data
@@ -273,8 +280,8 @@ def train():
                             })
                         test_pred_val = np.argmax(test_pred_val, 1)
                         correct = np.sum(test_pred_val[0:bsize] == batch_label[0:bsize])
-                        total_test_pred_vals += test_pred_val[0:bsize]
-                        total_batch_labels += batch_label[0:bsize]
+                        total_test_pred_vals = np.concatenate((total_test_pred_vals, test_pred_val[0:bsize]))
+                        total_batch_labels = np.concatenate((total_batch_labels, batch_label[0:bsize]))
                         total_correct += correct
                         total_seen += bsize
                         loss_sum += loss_val
@@ -297,11 +304,32 @@ def train():
                     np.mean(np.array(total_correct_class) / np.array(total_seen_class, dtype=np.float))))
 
                 # draw confusion_matrix
-                plot_cm(session, total_batch_labels, total_test_pred_vals)
+                if epoch == epochs - 1:
+                    plot_cm(session, total_batch_labels, total_test_pred_vals, image_dir)
+                # 计算模型的 metrics
+                ps = precision_score(total_batch_labels.tolist(),
+                                     total_test_pred_vals.tolist(),
+                                     average='weighted',
+                                     labels=np.unique(total_test_pred_vals))
+                print("Precision:\t{:.2%}".format(ps))
+
+                recall = recall_score(total_batch_labels,
+                                      total_test_pred_vals,
+                                      average='weighted')
+                print("Recall:\t\t{:.2%}".format(recall))
+
+                fs = f1_score(total_batch_labels,
+                              total_test_pred_vals,
+                              average='weighted',
+                              labels=np.unique(total_test_pred_vals))
+                print("f1_score:\t{:.2%}".format(fs))
 
                 # only save these parameter on every epoch
                 history['test_acc'].append(test_acc)
                 history['test_loss'].append(test_loss)
+                history['precision_score'].append(ps)
+                history['recall_score'].append(recall)
+                history['f1_score'].append(fs)
 
                 test_dataset.reset()
 
@@ -313,14 +341,20 @@ def train():
             save_history(history, train_log_dir)
 
 
-def plot_cm(session, total_batch_labels, total_test_pred_vals):
-    confusion_matrix = tf.confusion_matrix(total_batch_labels, total_test_pred_vals, 40)
-    print(session.run(confusion_matrix))
+def plot_cm(session, total_batch_labels, total_test_pred_vals, result_dir):
+    confusion_matrix_tensor = tf.confusion_matrix(total_batch_labels, total_test_pred_vals, 40)
+    confusion_matrix = session.run(confusion_matrix_tensor)
+    print(confusion_matrix)
     df_cm = pd.DataFrame(confusion_matrix, index=[i for i in classes],
                          columns=[i for i in classes])
-    plt.figure(figsize=(10, 7))
+    plt.figure(figsize=(10, 8), dpi=200)
     sn.heatmap(df_cm, annot=True, fmt="d", cmap="YlGnBu")
     plt.title('confusion matrix')
+
+    if os.path.exists(os.path.join(result_dir, 'confusion_matrix.png')):
+        os.remove(os.path.join(result_dir, 'confusion_matrix.png'))
+    plt.savefig(os.path.join(result_dir, 'confusion_matrix.png'))
+
     plt.show()
 
 
