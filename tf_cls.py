@@ -126,8 +126,8 @@ def train():
     test_dataset = ModelNetH5Dataset('./data/modelnet40_ply_hdf5_2048/test_files.txt',
                                      batch_size=batch_size, npoints=num_point, shuffle=False)
 
-    point_cloud = K.placeholder(dtype=np.float32, shape=(batch_size, num_point, 3))
-    labels = K.placeholder(dtype=np.int32, shape=batch_size)
+    point_cloud = K.placeholder(dtype=np.float32, shape=(batch_size, num_point, 3), name='x')
+    labels = K.placeholder(dtype=np.int32, shape=batch_size, name='y')
     is_training_pl = K.placeholder(dtype=np.bool, shape=())
 
     # Note the global_step=global_step parameter to minimize.
@@ -156,7 +156,7 @@ def train():
     learning_rate = get_learning_rate(global_step)
     tf.summary.scalar('learning_rate', learning_rate)
 
-    train_op = tf.train.AdamOptimizer(learning_rate).minimize(total_loss, global_step=global_step)
+    train_op = tf.train.AdamOptimizer(learning_rate).minimize(total_loss, global_step=global_step, name='train_op')
 
     saver = tf.train.Saver()
 
