@@ -8,6 +8,8 @@ import numpy as np
 from pointnet2_cls_msg import get_model
 from tqdm import tqdm
 import time
+import pandas as pd
+import seaborn as sn
 
 # specify to use keras model (implemented by HarborZeng)
 # or tensorflow model (implemented by CharlesQi)
@@ -20,6 +22,7 @@ nb_classes = 40
 epochs = 200
 # the size of ever mini-batch
 batch_size = 16
+# the number of points in a train/eval data
 num_point = 1024
 
 decay_step = 200000
@@ -247,6 +250,8 @@ def train():
                 batch_idx = 0
                 total_seen_class = [0 for _ in range(nb_classes)]
                 total_correct_class = [0 for _ in range(nb_classes)]
+                total_test_pred_vals = []
+                total_batch_labels = []
 
                 print('---- EPOCH {} EVALUATION ----'.format(epoch))
                 time.sleep(4)
@@ -268,6 +273,8 @@ def train():
                             })
                         test_pred_val = np.argmax(test_pred_val, 1)
                         correct = np.sum(test_pred_val[0:bsize] == batch_label[0:bsize])
+                        total_test_pred_vals += test_pred_val[0:bsize]
+                        total_batch_labels += batch_label[0:bsize]
                         total_correct += correct
                         total_seen += bsize
                         loss_sum += loss_val
@@ -289,6 +296,9 @@ def train():
                 print('eval avg class acc:\t{:.2%}'.format(
                     np.mean(np.array(total_correct_class) / np.array(total_seen_class, dtype=np.float))))
 
+                # draw confusion_matrix
+                plot_cm(session, total_batch_labels, total_test_pred_vals)
+
                 # only save these parameter on every epoch
                 history['test_acc'].append(test_acc)
                 history['test_loss'].append(test_loss)
@@ -301,6 +311,17 @@ def train():
 
             plot_history(history, image_dir)
             save_history(history, train_log_dir)
+
+
+def plot_cm(session, total_batch_labels, total_test_pred_vals):
+    confusion_matrix = tf.confusion_matrix(total_batch_labels, total_test_pred_vals, 40)
+    print(session.run(confusion_matrix))
+    df_cm = pd.DataFrame(confusion_matrix, index=[i for i in classes],
+                         columns=[i for i in classes])
+    plt.figure(figsize=(10, 7))
+    sn.heatmap(df_cm, annot=True, fmt="d", cmap="YlGnBu")
+    plt.title('confusion matrix')
+    plt.show()
 
 
 if __name__ == '__main__':
