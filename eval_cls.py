@@ -113,6 +113,7 @@ def eval_one_epoch(sess, ops, num_votes=1):
     class_accuracies = np.array(total_correct_class) / np.array(total_seen_class, dtype=np.float)
     for i, name in enumerate(shape_names):
         print('%10s:\t%0.3f' % (name, class_accuracies[i]))
+    # TODO add confusion matrix
 
 
 if __name__ == '__main__':
