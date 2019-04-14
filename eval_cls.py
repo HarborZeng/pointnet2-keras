@@ -41,7 +41,7 @@ def evaluate(num_votes=1):
     sess = tf.Session(config=config)
 
     # Restore variables from disk.
-    saver.restore(sess, 'summary')
+    saver.restore(sess, 'summary/model.ckpt')
     print("Model restored.")
 
     ops = {'pointclouds_pl': point_cloud,
