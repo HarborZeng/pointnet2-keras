@@ -5,6 +5,7 @@ from tqdm import tqdm
 from model_cls import pointnet2
 from util.provider import rotate_point_cloud_by_angle
 import modelnet_h5_dataset
+from tf_cls import plot_cm
 
 num_classes = 40
 num_point = 1024
@@ -66,6 +67,8 @@ def eval_one_epoch(sess, ops, num_votes=1):
     batch_idx = 0
     total_seen_class = [0 for _ in range(num_classes)]
     total_correct_class = [0 for _ in range(num_classes)]
+    total_test_pred_vals = []
+    total_batch_labels = []
 
     time.sleep(4)
     with tqdm(total=test_dataset.total_batch(), unit='batches') as pbar:
@@ -90,6 +93,8 @@ def eval_one_epoch(sess, ops, num_votes=1):
                 batch_pred_sum += pred_val
             pred_val = np.argmax(batch_pred_sum, 1)
             correct = np.sum(pred_val[0:bsize] == batch_label[0:bsize])
+            total_test_pred_vals = np.concatenate((total_test_pred_vals, pred_val[0:bsize]))
+            total_batch_labels = np.concatenate((total_batch_labels, batch_label[0:bsize]))
             total_correct += correct
             total_seen += bsize
             loss_sum += loss_val
@@ -113,7 +118,7 @@ def eval_one_epoch(sess, ops, num_votes=1):
     class_accuracies = np.array(total_correct_class) / np.array(total_seen_class, dtype=np.float)
     for i, name in enumerate(shape_names):
         print('%10s:\t%0.3f' % (name, class_accuracies[i]))
-    # TODO add confusion matrix
+    plot_cm(sess, total_batch_labels, total_test_pred_vals, '.')
 
 
 if __name__ == '__main__':
