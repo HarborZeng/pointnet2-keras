@@ -81,6 +81,10 @@ $ tensorboard --logdir summary
 
 ![利用keras构建的神经网络](https://raw.githubusercontent.com/HarborZeng/pointnet2-keras/master/result_image/nn_graph.gif)
 
+4. 训练结果混淆矩阵
+
+![confusion matix](https://raw.githubusercontent.com/HarborZeng/pointnet2-keras/master/confusion_matrix.png)
+
 ## TODO
 
 - [ ] part segmentation
