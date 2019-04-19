@@ -347,7 +347,7 @@ def plot_cm(session, total_batch_labels, total_test_pred_vals, result_dir):
     print(confusion_matrix)
     df_cm = pd.DataFrame(confusion_matrix, index=[i for i in classes],
                          columns=[i for i in classes])
-    plt.figure(figsize=(10, 8), dpi=200)
+    plt.figure(figsize=(12, 12), dpi=200)
     sn.heatmap(df_cm, annot=True, fmt="d", cmap="YlGnBu")
     plt.title('confusion matrix')
 
