@@ -24,6 +24,32 @@ K.placeholder(dtype=np.float32, shape=(batch_size, num_point, 3))
 
 等等。
 
+## 术语提示
+
+术语 | 全称 | 说明 
+---------|----------|---------
+ tf | tensorflow |  
+ K | keras.backend | keras的后台 
+ op | opration | 操作 
+ ModelNet40 |  | 从ShapeNet下载的数据集，包含40个分类，每个数据2048个点 
+ cm | confusion matix | 混淆矩阵，一看到图您就能明白是什么意思了 
+ cls | classification | 分类 
+ seg | segmentation | 分割 
+ h5 | h5py，hdf5 | 一个数据存储的python库，h5作为格式后缀 
+ msg | muilt-scale-grouping | 多尺度分组（详见论文内介绍） 
+ ssg | single-scale-grouping | 单尺度分组（详见论文内介绍） 
+ tqdm |  | 一个python进度条展示库 
+ bn | batch normalization | 批次正则化，有什么作用可自行google 
+ acc | accuracy | 准确率 
+ val | value、validate | 值 或者 验证集 
+ eval | evaluate | 评估、评测、评价 
+ sa | set abstraction | 系列抽取（详见论文内描述） 
+ nn | Neural Network | 神经网络 
+ shuffle |  | 打乱、乱序 
+ fp | feature propagation | 特征传递 
+ model |  | 有时候一个数据叫做一个model，有时候一些神经网络的堆叠叫做model，有时候训练完成后的权重保存的文件叫model 
+ logits |  | 没有softmax的prediction 
+
 ## 点云分类
 
 ### 数据集
