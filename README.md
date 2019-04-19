@@ -38,6 +38,7 @@ K.placeholder(dtype=np.float32, shape=(batch_size, num_point, 3))
  h5 | h5py，hdf5 | 一个数据存储的python库，h5作为格式后缀 
  msg | multi-scale-grouping | 多尺度分组（详见论文内介绍） 
  ssg | single-scale-grouping | 单尺度分组（详见论文内介绍） 
+ mlp | multi-layer-perceptron | 多层感知器（简单理解就是for循环添加一堆大小不一样的Dense层的意思） 
  tqdm |  | 一个python进度条展示库 
  bn | batch normalization | 批次正则化，有什么作用可自行google 
  acc | accuracy | 准确率 
