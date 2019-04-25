@@ -174,7 +174,8 @@ def train():
         tf.summary.histogram(var.op.name, var)
 
     # delete previous summary and ckpt file
-    tf.gfile.DeleteRecursively(summary_dir)
+    if os.path.exists(summary_dir):
+        tf.gfile.DeleteRecursively(summary_dir)
 
     merged = tf.summary.merge_all()
     train_writer = tf.summary.FileWriter(os.path.join(summary_dir, 'train'), session.graph)
